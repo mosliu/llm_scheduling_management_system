@@ -1,0 +1,132 @@
+# Search provider configuration example
+
+[[providers]]
+name = "exa_search"
+provider_type = "search_with_inline_content"
+vendor = "exa"
+base_url = "https://api.exa.ai"
+api_key = "replace-me"
+timeout_seconds = 30
+enabled = true
+simulate = true
+extra_headers = {}
+
+[[providers]]
+name = "tavily_search"
+provider_type = "search_with_inline_content"
+vendor = "tavily"
+base_url = "https://api.tavily.com"
+api_key = "replace-me"
+timeout_seconds = 30
+enabled = true
+simulate = true
+extra_headers = {}
+
+[[providers]]
+name = "firecrawl_search"
+provider_type = "search_with_inline_content"
+vendor = "firecrawl"
+base_url = "https://api.firecrawl.dev"
+api_key = "replace-me"
+timeout_seconds = 60
+enabled = false
+simulate = true
+extra_headers = {}
+
+[[providers]]
+name = "tinyfish_search"
+provider_type = "search_only"
+vendor = "tinyfish"
+base_url = "https://api.search.tinyfish.ai"
+api_key = "replace-me"
+timeout_seconds = 30
+enabled = false
+simulate = true
+extra_headers = {}
+
+[[fetch_providers]]
+name = "exa_contents"
+provider_type = "fetch_only"
+vendor = "exa"
+base_url = "https://api.exa.ai"
+api_key = "replace-me"
+timeout_seconds = 30
+enabled = true
+simulate = true
+extra_headers = {}
+
+[[fetch_providers]]
+name = "firecrawl_scrape"
+provider_type = "fetch_only"
+vendor = "firecrawl"
+base_url = "https://api.firecrawl.dev"
+api_key = "replace-me"
+timeout_seconds = 90
+enabled = true
+simulate = true
+extra_headers = {}
+
+[[fetch_providers]]
+name = "tavily_extract"
+provider_type = "fetch_only"
+vendor = "tavily"
+base_url = "https://api.tavily.com"
+api_key = "replace-me"
+timeout_seconds = 60
+enabled = false
+simulate = true
+extra_headers = {}
+
+[[fetch_providers]]
+name = "tinyfish_fetch"
+provider_type = "fetch_only"
+vendor = "tinyfish"
+base_url = "https://api.fetch.tinyfish.ai"
+api_key = "replace-me"
+timeout_seconds = 150
+enabled = false
+simulate = true
+extra_headers = {}
+
+[[crawl_providers]]
+name = "firecrawl_crawl"
+provider_type = "site_crawl"
+vendor = "firecrawl"
+base_url = "https://api.firecrawl.dev"
+api_key = "replace-me"
+timeout_seconds = 120
+enabled = true
+simulate = true
+extra_headers = {}
+
+[[crawl_providers]]
+name = "tavily_crawl"
+provider_type = "site_crawl"
+vendor = "tavily"
+base_url = "https://api.tavily.com"
+api_key = "replace-me"
+timeout_seconds = 120
+enabled = false
+simulate = true
+extra_headers = {}
+
+[[embedded_search_providers]]
+name = "grok_web_search"
+provider_type = "model_embedded_search"
+vendor = "xai"
+mode = "web_search"
+enabled = false
+
+[[embedded_search_providers]]
+name = "grok_x_search"
+provider_type = "model_embedded_search"
+vendor = "xai"
+mode = "x_search"
+enabled = false
+
+[policy]
+default_time_window_days = 7
+max_results_per_provider = 50
+default_search_providers = ["exa_search", "tavily_search"]
+default_fetch_provider = "firecrawl_scrape"
+default_crawl_provider = "firecrawl_crawl"

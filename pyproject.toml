@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-scheduling-management-system"
+version = "0.1.0"
+description = "Workflow-oriented platform for centralized LLM orchestration, search integration, and reusable task execution."
+readme = "docs/README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "alembic>=1.18.4",
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "langgraph>=1.1.10",
+    "loguru>=0.7.3",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.1",
+    "pymysql>=1.1.3",
+    "sqlalchemy>=2.0.49",
+    "tomli-w>=1.2.0",
+    "uvicorn>=0.46.0",
+]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_scheduling_management_system"]

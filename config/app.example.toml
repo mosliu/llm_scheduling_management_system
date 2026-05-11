@@ -1,0 +1,19 @@
+# Application configuration example
+
+[app]
+name = "llm-scheduling-management-system"
+env = "local"
+debug = true
+timezone = "Asia/Shanghai"
+
+[api]
+host = "0.0.0.0"
+port = 8000
+
+[runtime]
+default_task_queue = "workflow-default"
+default_artifact_ttl_days = 7
+enable_sse = true
+
+[security]
+enable_auth = false

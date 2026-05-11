@@ -1,0 +1,17 @@
+# Storage configuration example
+
+[mysql]
+dsn = "mysql+pymysql://user:password@127.0.0.1:3306/llm_workflow?charset=utf8mb4"
+
+[postgres]
+dsn = "postgresql+psycopg://user:password@localhost:5432/llm_workflow"
+
+[redis]
+url = "redis://localhost:6379/0"
+
+[object_store]
+endpoint = "http://localhost:9000"
+access_key = "replace-me"
+secret_key = "replace-me"
+bucket = "workflow-artifacts"
+secure = false

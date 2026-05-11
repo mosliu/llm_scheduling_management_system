@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# uv and virtual environments
+.venv/
+
+# IDE and OS files
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Runtime outputs
+logs/
+tmp/
+temp/
+artifacts/
+.workflow/
+data/
+*.db
+
+# Local configuration
+config/app.toml
+config/llm.toml
+config/search.toml
+config/mcp.toml
+config/source_registry.toml
+config/storage.toml
+config/observability.toml
+
+# Local environment files
+.env
+.env.*
+!.env.example

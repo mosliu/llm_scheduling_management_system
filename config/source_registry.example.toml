@@ -1,0 +1,20 @@
+[[sources]]
+domain = "exa.example.com"
+region_hint = "overseas"
+publisher_type = "media"
+language = "en"
+official = false
+
+[[sources]]
+domain = "tavily.example.com"
+region_hint = "overseas"
+publisher_type = "media"
+language = "en"
+official = false
+
+[[sources]]
+domain = "firecrawl.example.com"
+region_hint = "overseas"
+publisher_type = "crawler"
+language = "en"
+official = false

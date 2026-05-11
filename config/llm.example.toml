@@ -1,0 +1,49 @@
+# LLM configuration example
+
+[[providers]]
+name = "openai_primary"
+provider_type = "openai"
+base_url = "https://api.openai.com/v1"
+api_key = "replace-me"
+timeout_seconds = 60
+simulate = true
+extra_headers = {}
+
+[[providers]]
+name = "anthropic_primary"
+provider_type = "anthropic"
+base_url = "https://api.anthropic.com"
+api_key = "replace-me"
+timeout_seconds = 60
+simulate = true
+extra_headers = {}
+
+[[profiles]]
+name = "cheap_structured_cn"
+provider = "openai_primary"
+model = "gpt-4.1-mini"
+temperature = 0.1
+max_tokens = 4000
+structured_output = true
+fallback_profiles = []
+default_options = {}
+
+[[profiles]]
+name = "advanced_reasoning_cn"
+provider = "anthropic_primary"
+model = "claude-sonnet"
+temperature = 0.2
+max_tokens = 8000
+structured_output = false
+fallback_profiles = ["cheap_structured_cn"]
+default_options = {}
+
+[[profiles]]
+name = "claude_opus_web_search_optional"
+provider = "anthropic_primary"
+model = "claude-opus-4-7"
+temperature = 0.2
+max_tokens = 8000
+structured_output = false
+fallback_profiles = ["advanced_reasoning_cn"]
+default_options = { system = "这里是系统提示词", thinking = { type = "adaptive", display = "summarized" }, output_config = { effort = "high" }, tools = [ { type = "web_search_20250305", name = "web_search" } ] }

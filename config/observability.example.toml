@@ -1,0 +1,16 @@
+# Observability configuration example
+
+[logging]
+level = "INFO"
+json = false
+dir = "logs"
+filename = "app.log"
+rotation = "00:00"
+retention = "14 days"
+
+[metrics]
+enabled = true
+
+[tracing]
+enabled = true
+service_name = "llm-workflow-platform"

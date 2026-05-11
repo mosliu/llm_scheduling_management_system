@@ -1,0 +1,14 @@
+# MCP configuration example
+
+[[servers]]
+name = "internal_tools"
+transport = "stdio"
+command = "python"
+args = ["-m", "example_mcp_server"]
+timeout_seconds = 30
+
+[[servers]]
+name = "remote_tools"
+transport = "http"
+url = "http://localhost:9001/mcp"
+timeout_seconds = 30
