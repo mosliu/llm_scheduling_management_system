@@ -707,6 +707,12 @@ class LLMReportExecutor(StepExecutor):
         return provider_name, provider_type, model_name, simulated
 
     @staticmethod
+    def _provider_http_exchange(provider) -> tuple[dict, dict]:
+        request_snapshot = getattr(provider, "last_request_snapshot", {}) or {}
+        response_snapshot = getattr(provider, "last_response_snapshot", {}) or {}
+        return request_snapshot, response_snapshot
+
+    @staticmethod
     def _build_deterministic_report_fallback(
         topic: str,
         timeline: list[dict],
@@ -808,6 +814,7 @@ class LLMReportExecutor(StepExecutor):
                         generated_text = provider.generate(prompt_text)
                     except Exception as exc:
                         last_error = str(exc)
+                        request_snapshot, response_snapshot = self._provider_http_exchange(provider)
                         invocation_records.append(
                             LLMInvocationRecord(
                                 provider_name=provider_name,
@@ -821,16 +828,19 @@ class LLMReportExecutor(StepExecutor):
                                     "auto_attempt": auto_attempt,
                                     "model_attempt": model_attempt,
                                     "profile_chain_index": profile_index,
+                                    "http_request": request_snapshot,
                                 },
                                 response_metadata={
                                     "simulated": simulated,
                                     "error": str(exc),
                                     "empty": True,
+                                    "http_response": response_snapshot,
                                 },
                             )
                         )
                         continue
 
+                    request_snapshot, response_snapshot = self._provider_http_exchange(provider)
                     invocation_records.append(
                         LLMInvocationRecord(
                             provider_name=provider_name,
@@ -844,10 +854,12 @@ class LLMReportExecutor(StepExecutor):
                                 "auto_attempt": auto_attempt,
                                 "model_attempt": model_attempt,
                                 "profile_chain_index": profile_index,
+                                "http_request": request_snapshot,
                             },
                             response_metadata={
                                 "simulated": simulated,
                                 "empty": not bool((generated_text or "").strip()),
+                                "http_response": response_snapshot,
                             },
                         )
                     )

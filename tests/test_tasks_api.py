@@ -1205,6 +1205,50 @@ def test_llm_report_executor_uses_fallback_profile_after_retries():
     assert result.llm_invocations[-1].profile_name == "fallback_profile"
 
 
+def test_llm_report_executor_records_raw_http_exchange_metadata():
+    provider = _StubLLMProvider("openai_primary", "gpt-5.4", ["structured response"])
+    provider.last_request_snapshot = {
+        "method": "POST",
+        "url": "https://gateway.example.com/v1/chat/completions",
+        "headers": {"Authorization": "***redacted***"},
+        "json_body": {"model": "gpt-5.4"},
+        "params": None,
+    }
+    provider.last_response_snapshot = {
+        "status_code": 200,
+        "headers": {"content-type": "application/json"},
+        "body_text": '{"choices":[{"message":{"content":"structured response"}}]}',
+        "parsed_payload": {"choices": [{"message": {"content": "structured response"}}]},
+    }
+    factory = _StubLLMFactory({"primary_profile": provider})
+    executor = LLMReportExecutor(llm_provider_factory=factory, profile_name="primary_profile")
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_http_exchange",
+            "input_payload": {"topic": "http exchange test"},
+            "options_payload": {
+                "llm_profile_name": "primary_profile",
+                "report_retry_count": 0,
+                "llm_model_retry_count": 0,
+                "report_fallback_profile_names": [],
+            },
+            "artifacts": [],
+        },
+    )()
+    step = type("Step", (), {"node_key": "generate_public_opinion_report", "input_artifact_refs": []})()
+
+    result = executor.execute(task, step)
+
+    http_request = result.llm_invocations[0].request_metadata["http_request"]
+    http_response = result.llm_invocations[0].response_metadata["http_response"]
+    assert http_request["url"].endswith("/chat/completions")
+    assert http_request["headers"]["Authorization"] == "***redacted***"
+    assert http_response["status_code"] == 200
+    assert "structured response" in http_response["body_text"]
+
+
 def test_final_report_endpoint_returns_generated_report(client):
     create_response = client.post(
         "/api/v1/tasks",

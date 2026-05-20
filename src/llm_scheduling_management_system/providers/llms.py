@@ -10,6 +10,8 @@ class BaseConfiguredLLMProvider(LLMProvider):
         self.provider = provider
         self.profile = profile
         self.http_client = HTTPProviderClient(provider.base_url, provider.timeout_seconds)
+        self.last_request_snapshot: dict = {}
+        self.last_response_snapshot: dict = {}
 
     def build_request(self, prompt: str) -> ProviderRequest:
         raise NotImplementedError
@@ -20,7 +22,22 @@ class BaseConfiguredLLMProvider(LLMProvider):
     def generate(self, prompt: str) -> str:
         request = self.build_request(prompt)
         if not self.provider.simulate:
-            response = self.http_client.execute(request)
+            self.last_request_snapshot = {
+                "method": request.method,
+                "url": request.url,
+                "headers": self.http_client._sanitize_headers(request.headers),
+                "json_body": request.json_body,
+                "params": request.params,
+            }
+            try:
+                response = self.http_client.execute(request)
+            except Exception as exc:
+                self.last_response_snapshot = {
+                    "error": str(exc),
+                }
+                raise
+            self.last_request_snapshot = response.request_snapshot
+            self.last_response_snapshot = response.response_snapshot
             return self.parse_response_text(response.payload)
         return (
             f"[{self.provider.name}/{self.profile.model}] simulated generation "
@@ -36,6 +53,8 @@ class OpenAIProvider(BaseConfiguredLLMProvider):
                 "model": self.profile.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
+                "temperature": self.profile.temperature,
+                "max_tokens": self.profile.max_tokens,
                 **{k: v for k, v in self.profile.default_options.items() if k != "api_mode"},
             }
             return ProviderRequest(
@@ -47,6 +66,8 @@ class OpenAIProvider(BaseConfiguredLLMProvider):
         json_body = {
             "model": self.profile.model,
             "input": prompt,
+            "temperature": self.profile.temperature,
+            "max_output_tokens": self.profile.max_tokens,
             **{k: v for k, v in self.profile.default_options.items() if k != "api_mode"},
         }
         return ProviderRequest(
@@ -90,6 +111,7 @@ class AnthropicProvider(BaseConfiguredLLMProvider):
         json_body = {
             "model": self.profile.model,
             "max_tokens": self.profile.max_tokens,
+            "temperature": self.profile.temperature,
             "messages": [{"role": "user", "content": prompt}],
             **self.profile.default_options,
         }

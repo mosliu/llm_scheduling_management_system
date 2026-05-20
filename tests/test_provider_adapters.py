@@ -1,4 +1,5 @@
 from llm_scheduling_management_system.config_models import LLMProfileConfig, LLMProviderConfig, SearchProviderConfig
+from llm_scheduling_management_system.providers.http_client import ProviderResponse
 from llm_scheduling_management_system.providers.llms import AnthropicProvider, OpenAIProvider
 from llm_scheduling_management_system.providers.fetch import FirecrawlFetchProvider
 from llm_scheduling_management_system.providers.search import (
@@ -180,6 +181,90 @@ def test_llm_providers_build_expected_requests():
     assert openai_request.json_body["model"] == "gpt-4.1-mini"
     assert anthropic_request.url.endswith("/v1/messages")
     assert anthropic_request.json_body["model"] == "claude-sonnet"
+    assert anthropic_request.json_body["temperature"] == 0.2
+
+
+def test_openai_chat_completions_request_includes_profile_runtime_parameters():
+    openai_provider = LLMProviderConfig(
+        name="openai_primary",
+        provider_type="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        simulate=True,
+    )
+    openai_profile = LLMProfileConfig(
+        name="advanced_reasoning_cn",
+        provider="openai_primary",
+        model="gpt-5.4",
+        temperature=0.2,
+        max_tokens=8000,
+        structured_output=False,
+        fallback_profiles=[],
+        default_options={"api_mode": "chat_completions"},
+    )
+
+    openai = OpenAIProvider(openai_provider, openai_profile)
+    request = openai.build_request("hello")
+
+    assert request.url.endswith("/chat/completions")
+    assert request.json_body["model"] == "gpt-5.4"
+    assert request.json_body["temperature"] == 0.2
+    assert request.json_body["max_tokens"] == 8000
+
+
+def test_openai_generate_captures_raw_http_exchange(monkeypatch):
+    openai_provider = LLMProviderConfig(
+        name="openai_primary",
+        provider_type="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        simulate=False,
+    )
+    openai_profile = LLMProfileConfig(
+        name="advanced_reasoning_cn",
+        provider="openai_primary",
+        model="gpt-5.4",
+        temperature=0.2,
+        max_tokens=8000,
+        structured_output=False,
+        fallback_profiles=[],
+        default_options={"api_mode": "chat_completions"},
+    )
+
+    openai = OpenAIProvider(openai_provider, openai_profile)
+
+    def fake_execute(request):
+        return ProviderResponse(
+            status_code=504,
+            payload={"error": {"message": "openai_error"}},
+            headers={"content-type": "application/json"},
+            raw_text='{"error":{"message":"openai_error"}}',
+            request_snapshot={
+                "method": request.method,
+                "url": request.url,
+                "headers": {"Authorization": "***redacted***"},
+                "json_body": request.json_body,
+                "params": request.params,
+            },
+            response_snapshot={
+                "status_code": 504,
+                "headers": {"content-type": "application/json"},
+                "body_text": '{"error":{"message":"openai_error"}}',
+                "parsed_payload": {"error": {"message": "openai_error"}},
+            },
+        )
+
+    monkeypatch.setattr(openai.http_client, "execute", fake_execute)
+
+    text = openai.generate("hello")
+
+    assert text == ""
+    assert openai.last_request_snapshot["url"].endswith("/chat/completions")
+    assert openai.last_request_snapshot["headers"]["Authorization"] == "***redacted***"
+    assert openai.last_response_snapshot["status_code"] == 504
+    assert "openai_error" in openai.last_response_snapshot["body_text"]
 
 
 def test_anthropic_request_can_carry_web_search_options():

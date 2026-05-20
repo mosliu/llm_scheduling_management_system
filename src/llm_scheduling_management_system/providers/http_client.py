@@ -20,6 +20,9 @@ class ProviderResponse:
     status_code: int
     payload: Any
     headers: dict[str, Any] = field(default_factory=dict)
+    raw_text: str = ""
+    request_snapshot: dict[str, Any] = field(default_factory=dict)
+    response_snapshot: dict[str, Any] = field(default_factory=dict)
 
 
 class HTTPProviderClient:
@@ -35,7 +38,25 @@ class HTTPProviderClient:
     def create_client(self) -> httpx.Client:
         return httpx.Client(timeout=self.timeout_seconds)
 
+    @staticmethod
+    def _sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
+        masked: dict[str, str] = {}
+        for key, value in headers.items():
+            lowered = key.lower()
+            if lowered in {"authorization", "x-api-key"}:
+                masked[key] = "***redacted***"
+            else:
+                masked[key] = value
+        return masked
+
     def execute(self, request: ProviderRequest) -> ProviderResponse:
+        request_snapshot = {
+            "method": request.method,
+            "url": request.url,
+            "headers": self._sanitize_headers(request.headers),
+            "json_body": request.json_body,
+            "params": request.params,
+        }
         with self.create_client() as client:
             response = client.request(
                 method=request.method,
@@ -44,12 +65,22 @@ class HTTPProviderClient:
                 json=request.json_body,
                 params=request.params,
             )
+            raw_text = response.text
             try:
                 payload = response.json()
             except ValueError:
-                payload = response.text
+                payload = raw_text
+            response_snapshot = {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "body_text": raw_text,
+                "parsed_payload": payload,
+            }
             return ProviderResponse(
                 status_code=response.status_code,
                 payload=payload,
                 headers=dict(response.headers),
+                raw_text=raw_text,
+                request_snapshot=request_snapshot,
+                response_snapshot=response_snapshot,
             )
