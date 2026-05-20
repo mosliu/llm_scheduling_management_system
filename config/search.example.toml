@@ -44,6 +44,30 @@ enabled = false
 simulate = true
 extra_headers = {}
 
+[[providers]]
+name = "grok_search"
+provider_type = "model_embedded_search"
+vendor = "grok"
+base_url = "https://api.x.ai/v1"
+api_key = "replace-me"
+timeout_seconds = 120
+enabled = true
+simulate = true
+extra_headers = {}
+default_options = { model = "grok-4.20-beta", temperature = 0, tools = [ { type = "web_search", name = "web_search" } ], system = "You are a web intelligence retrieval engine for event analysis and public-opinion research. Return only strict JSON with shape {\"results\":[{\"title\":\"\",\"url\":\"\",\"content\":\"\",\"releaseDate\":\"\",\"author\":\"\",\"sourceType\":\"\",\"publisher\":\"\",\"language\":\"\",\"regionHint\":\"\"}]}. No markdown.", user_prompt_template = "Search the web for: {query}\nReturn up to {limit} high-quality, non-duplicate results as strict JSON only.\nEach result must include title, url, content, releaseDate, author, sourceType, publisher, language, regionHint.\nRules:\n- content must be a concise factual summary of the source, not your final analysis\n- preserve the source publication time when available\n- sourceType must be one of: official, mainstream_media, local_media, self_media, social, encyclopedia, forum, other\n- publisher should be the organization, outlet, platform, or agency name when available\n- language should be the source language when available\n- regionHint should be cn, overseas, global, or empty if unknown\n- if a field is unknown, return an empty string rather than inventing it\n- return JSON only, with no markdown fences and no prose" }
+
+[[providers]]
+name = "gpt_search"
+provider_type = "model_embedded_search"
+vendor = "openai"
+base_url = "https://api.openai.com/v1"
+api_key = "replace-me"
+timeout_seconds = 180
+enabled = true
+simulate = true
+extra_headers = {}
+default_options = { api_mode = "responses", model = "gpt-5.5", reasoning = { effort = "low", summary = "detailed" }, tools = [ { type = "web_search" } ], max_output_tokens = 2500, system = "You are a web intelligence retrieval engine for event analysis and public-opinion research. Return only strict JSON with shape {\"results\":[{\"title\":\"\",\"url\":\"\",\"content\":\"\",\"releaseDate\":\"\",\"author\":\"\",\"sourceType\":\"\",\"publisher\":\"\",\"language\":\"\",\"regionHint\":\"\"}]}. No markdown.", user_prompt_template = "Search the web for: {query}\nReturn up to {limit} high-quality, non-duplicate results as strict JSON only.\nEach result must include title, url, content, releaseDate, author, sourceType, publisher, language, regionHint.\nRules:\n- content must be a concise factual summary of the source, not your final analysis\n- preserve the source publication time when available\n- sourceType must be one of: official, mainstream_media, local_media, self_media, social, encyclopedia, forum, other\n- publisher should be the organization, outlet, platform, or agency name when available\n- language should be the source language when available\n- regionHint should be cn, overseas, global, or empty if unknown\n- if a field is unknown, return an empty string rather than inventing it\n- return JSON only, with no markdown fences and no prose" }
+
 [[fetch_providers]]
 name = "exa_contents"
 provider_type = "fetch_only"
@@ -126,7 +150,7 @@ enabled = false
 
 [policy]
 default_time_window_days = 7
-max_results_per_provider = 50
+max_results_per_provider = 30
 default_search_providers = ["exa_search", "tavily_search"]
 default_fetch_provider = "firecrawl_scrape"
 default_crawl_provider = "firecrawl_crawl"

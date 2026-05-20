@@ -19,6 +19,8 @@ This repository is no longer only a design scaffold. It already contains a runna
 - artifact lineage and checkpoints
 - provider configuration editing
 - a local task console at `/console`
+- final report retrieval endpoint
+- LLM retry and fallback chain for report generation
 
 ## What It Does
 
@@ -51,6 +53,7 @@ The current implementation supports:
   - `event_summary_v1`
   - `public_opinion_analysis_v1`
   - `public_opinion_timeline_v1`
+  - `public_opinion_report_v1`
 - task control:
   - create
   - list
@@ -73,8 +76,15 @@ The current implementation supports:
   - search hits
   - documents
   - search/fetch/llm/tool invocations
+- specialized report entrypoint:
+  - `POST /api/v1/reports/public-opinion`
 - provider catalog and source registry views
 - configurable local provider setup through the console
+- console graph visualization and provider health inspection
+- config test actions for search, LLM, and MCP profiles
+- multi-provider search fanout with parallel execution
+- configurable `search_limit` per task, defaulting to `30` results per provider
+- final-report polling endpoint for external systems
 
 ## Current Real Provider Status
 
@@ -86,6 +96,14 @@ Real search has already been validated for:
 
 - Tavily-compatible relay
 - Exa search
+- Grok relay as model-embedded web search
+- OpenAI-compatible web search via `responses` API
+
+As of `2026-05-12`, this workspace has successfully tested:
+
+- `grok-4.20-beta` web search through `https://api.aabao.top/v1/chat/completions`
+- `gpt-5.5` web search through `https://api.aabao.top/v1/responses`
+- `gpt-5.4` web search through `https://api.aabao.top/v1/responses`
 
 ### Fetch
 
@@ -233,6 +251,7 @@ Default local endpoints:
 
 - API: `http://127.0.0.1:8000`
 - Console: `http://127.0.0.1:8000/console`
+- Health: `http://127.0.0.1:8000/healthz`
 
 ### Run Worker
 
@@ -254,6 +273,94 @@ Run polling loop:
 uv run python scripts/dev_run_worker.py --mode loop
 ```
 
+The worker is what advances queued tasks asynchronously. If you only create a task through `POST /api/v1/tasks` or `POST /api/v1/reports/public-opinion`, keep the worker running if you want the task to continue automatically.
+
+If you want synchronous/manual execution instead, call `POST /api/v1/tasks/{task_id}/run`.
+
+### Linux Service Scripts
+
+Linux deployment scripts are provided under:
+
+- `scripts/services/deploy.sh`
+- `scripts/services/run-api.sh`
+- `scripts/services/run-worker.sh`
+- `scripts/services/llms-api.service.example`
+- `scripts/services/llms-worker.service.example`
+
+Recommended production deployment target:
+
+- `systemd`
+
+Example flow on Linux:
+
+1. copy the repo to a stable path such as `/opt/llm-scheduling-management-system`
+2. prepare `.env` and local `config/*.toml`
+3. run `uv sync`
+4. run `uv run alembic upgrade head`
+5. copy:
+   - `scripts/services/llms-api.service.example`
+   - `scripts/services/llms-worker.service.example`
+   into `/etc/systemd/system/`
+6. adjust `User`, `Group`, and `WorkingDirectory`
+7. enable and start both services
+
+Example commands:
+
+```bash
+sudo cp scripts/services/llms-api.service.example /etc/systemd/system/llms-api.service
+sudo cp scripts/services/llms-worker.service.example /etc/systemd/system/llms-worker.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now llms-api.service
+sudo systemctl enable --now llms-worker.service
+sudo systemctl status llms-api.service
+sudo systemctl status llms-worker.service
+```
+
+One-shot deployment command:
+
+```bash
+sudo bash scripts/services/deploy.sh
+```
+
+Supported environment overrides for `deploy.sh`:
+
+- `LSMS_SERVICE_USER`
+- `LSMS_SERVICE_GROUP`
+- `LSMS_API_SERVICE_NAME`
+- `LSMS_WORKER_SERVICE_NAME`
+- `LSMS_API_HOST`
+- `LSMS_API_PORT`
+- `LSMS_WORKER_POLL_INTERVAL`
+- `LSMS_WORKER_LIMIT`
+- `LSMS_INSTALL_SYSTEM_USER`
+- `LSMS_CHOWN_REPO`
+
+### Windows Service Scripts
+
+Windows deployment helpers are also provided under:
+
+- `scripts/services/run-api.ps1`
+- `scripts/services/run-worker.ps1`
+- `scripts/services/install-windows-tasks.ps1`
+- `scripts/services/uninstall-windows-tasks.ps1`
+- `scripts/services/start-windows-tasks.ps1`
+- `scripts/services/stop-windows-tasks.ps1`
+- `scripts/services/status-windows-tasks.ps1`
+
+These scripts install the API and worker as startup-managed Windows scheduled tasks. They are useful for Windows environments, but if your target is Linux, prefer the `systemd` path above.
+
+Example installation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/services/install-windows-tasks.ps1 -Force
+```
+
+Check status:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/services/status-windows-tasks.ps1
+```
+
 ### Export a Task Bundle
 
 ```bash
@@ -270,6 +377,7 @@ Runtime config prefers local files first:
 - `config/llm.toml`
 - `config/source_registry.toml`
 - `config/mcp.toml`
+- `.env`
 
 If a local file is missing, the system falls back to:
 
@@ -277,6 +385,14 @@ If a local file is missing, the system falls back to:
 - `config/llm.example.toml`
 - `config/source_registry.example.toml`
 - `config/mcp.example.toml`
+
+Additional checked-in example files document the wider operational shape of the system:
+
+- `config/app.example.toml`
+- `config/observability.example.toml`
+- `config/storage.example.toml`
+
+At the moment, the runtime directly loads search, LLM, source registry, MCP, and environment settings. The extra example files are still useful as deployment-oriented templates and future extension points.
 
 ### Important Rule
 
@@ -293,12 +409,58 @@ Provider configs support:
 - `extra_headers`
 - `default_options`
 
+Task-level retrieval options can also override runtime behavior:
+
+- `search_provider_names`
+- `search_limit`
+- `search_parallelism`
+
 Use:
 
 - `simulate = true`
   when you want stable local mock behavior
 - `simulate = false`
   when you want real HTTP execution
+
+### Minimum Real-Run Config
+
+For a real end-to-end public opinion report, the minimum practical setup is:
+
+- `.env`
+  with `LSMS_DATABASE_URL`
+- `config/search.toml`
+  with at least one real search provider and optionally one real fetch provider
+- `config/llm.toml`
+  with at least one real LLM provider and one runnable profile
+- `config/source_registry.toml`
+  if you want source classification and region/publisher enrichment
+- `config/mcp.toml`
+  only when you want MCP tools enabled for a workflow
+
+All local config files above are git-ignored by design.
+
+## Observability
+
+The runtime uses Loguru and writes logs to:
+
+- console stdout
+- `logs/app.log`
+
+Current log behavior:
+
+- daily rotation at `00:00`
+- retention of `14 days`
+- log level controlled by `LSMS_LOG_LEVEL`
+
+Task observability is also exposed through persisted runtime entities:
+
+- `task_events`
+- `step_runs`
+- `artifacts`
+- `checkpoints`
+- invocation records for search, fetch, LLM, and MCP/tool calls
+
+For worker stability on long-lived MySQL deployments, `scripts/run_worker_service.py` uses a fresh SQLAlchemy session per processing cycle instead of holding one session forever.
 
 ## Console
 
@@ -318,8 +480,10 @@ It includes:
 - graph / events / invocations / documents / hits / bundle
 - continuation tools
 - config editors for search, llm, source registry, and MCP
+- config test actions for search, llm, and MCP
 - provider health checks
 - runtime provider/profile selection per task
+- multi-select search providers and task-level search limit input
 
 ### Grok Note
 
@@ -336,6 +500,11 @@ Recommended architecture:
 
 ## API Overview
 
+Health and utility endpoints:
+
+- `GET /healthz`
+- `GET /api/v1/system/status`
+
 Main task endpoints:
 
 - `GET /api/v1/tasks`
@@ -344,6 +513,7 @@ Main task endpoints:
 - `POST /api/v1/tasks/{task_id}/run`
 - `POST /api/v1/tasks/{task_id}/run-next-step`
 - `POST /api/v1/tasks/{task_id}/cancel`
+- `GET /api/v1/tasks/{task_id}/final-report`
 
 Task detail views:
 
@@ -387,7 +557,6 @@ Template and catalog endpoints:
 - `GET /api/v1/provider-catalog/source-registry`
 - `GET /api/v1/provider-catalog/mcp/servers`
 - `GET /api/v1/provider-catalog/health`
-- `GET /api/v1/system/status`
 
 Config endpoints:
 
@@ -404,6 +573,83 @@ Config endpoints:
 - `POST /api/v1/config/mcp/test`
 - `GET /api/v1/config/notes/grok-search`
 - `GET /api/v1/config/notes/claude-models`
+
+Specialized report endpoint:
+
+- `POST /api/v1/reports/public-opinion`
+- `GET /api/v1/reports/public-opinion/{task_id}/final-report`
+
+## Quick Start: Public Opinion Report
+
+If your external system only wants to submit a topic and let the platform run the full workflow, use the specialized report API:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/reports/public-opinion" \
+  -H "Content-Type: application/json" \
+  -d "{\"topic\":\"2026年5月浏阳大爆炸\",\"disable_cache\":true,\"llm_profile_name\":\"advanced_reasoning_cn\",\"execution_engine\":\"langgraph\"}"
+```
+
+The response contains a `task_id`. After that:
+
+1. keep the worker running with `uv run python scripts/dev_run_worker.py --mode loop`, or call `POST /api/v1/tasks/{task_id}/run` yourself
+2. poll `GET /api/v1/tasks/{task_id}` for top-level progress
+3. inspect `GET /api/v1/tasks/{task_id}/events` for the live execution trail
+4. inspect `GET /api/v1/tasks/{task_id}/bundle` for a one-shot JSON view of task, steps, artifacts, hits, documents, and invocations
+5. inspect `GET /api/v1/tasks/{task_id}/graph` for the step/artifact graph shown in the console
+
+The specialized report route currently creates a task using:
+
+- template: `public_opinion_report_v1`
+- default search providers: `tavily_search`, `grok_search`, `gpt_search`, `exa_search`
+- default search limit: `30` per provider
+- default fetch provider: `exa_contents`
+- default execution engine: `langgraph`
+- default report retry count: `2`
+- default per-model retry count: `2`
+- default fallback profiles: `grok_reasoning_optional`, `claude_opus_web_search_optional`, `cheap_structured_cn`
+
+The route is only a convenience wrapper. The same flow can still be created through `POST /api/v1/tasks`. If your local config uses different provider names, use the generic task API and pass explicit `options`.
+
+### Final Report Polling
+
+External systems can poll a dedicated endpoint instead of scanning artifacts:
+
+```text
+GET /api/v1/tasks/{task_id}/final-report
+```
+
+Response behavior:
+
+- `ready = false`
+  when the final report is not available yet
+- `ready = true`
+  when the report text is available
+
+Status semantics:
+
+- `report_state = "not_generated"`
+  when the report step has not finished yet
+- `report_state = "empty"`
+  when a final report artifact exists but the text payload is empty
+- `report_state = "ready"`
+  when report text is available
+
+The response includes:
+
+- `report_text`
+- `artifact_id`
+- `generated_at`
+- `llm_profile_name`
+- `llm_model_name`
+- `llm_invocation_id`
+- `timeline`
+- `timeline_count`
+- `official_responses`
+- `official_response_count`
+- `media_viewpoints`
+- `media_viewpoint_count`
+- `public_viewpoints`
+- `public_viewpoint_count`
 
 ## Workflow Semantics
 
@@ -433,6 +679,44 @@ Supported continuation modes:
 ### Cache
 
 The system supports deterministic step cache for repeated tasks.
+
+### Search Fanout
+
+The `search_fanout` step supports selecting multiple providers in one task.
+
+Those providers are executed in parallel and each provider receives its own per-provider limit.
+
+Example task options:
+
+```json
+{
+  "search_provider_names": ["tavily_search", "grok_search", "gpt_search", "exa_search"],
+  "search_limit": 30
+}
+```
+
+### Report Retry and Fallback
+
+Final report generation now supports:
+
+- automatic end-to-end retry
+- per-model retry
+- model/profile fallback chain
+- deterministic structured fallback text if all configured LLM attempts still fail
+
+Relevant task options:
+
+```json
+{
+  "report_retry_count": 2,
+  "llm_model_retry_count": 2,
+  "report_fallback_profile_names": [
+    "grok_reasoning_optional",
+    "claude_opus_web_search_optional",
+    "cheap_structured_cn"
+  ]
+}
+```
 
 You can bypass cache using task options:
 
@@ -492,6 +776,7 @@ The repository currently provides:
 - real provider integration start
 - real search / fetch / llm validation paths
 - local MCP example chain
+- optional LangGraph-backed execution path
 
 This includes:
 
@@ -506,7 +791,7 @@ Still pending for production-grade readiness:
 
 - full auth and multi-tenant enforcement
 - distributed queue / lock / worker coordination
-- full LangGraph orchestration integration
+- making LangGraph the sole orchestration owner and hardening its state model
 - richer response normalization across all providers
 - advanced retry / rate-limit policies
 - production deployment hardening

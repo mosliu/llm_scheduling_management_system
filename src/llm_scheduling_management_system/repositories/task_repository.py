@@ -154,6 +154,16 @@ DEFAULT_TEMPLATE_STEP_BLUEPRINTS = {
             "title": "Merge Search Results",
         },
         {
+            "node_key": "extract_event_time",
+            "node_type": "extract",
+            "title": "Extract Event Time",
+        },
+        {
+            "node_key": "build_timeline",
+            "node_type": "transform",
+            "title": "Build Timeline",
+        },
+        {
             "node_key": "extract_official_responses",
             "node_type": "analysis",
             "title": "Extract Official Responses",
@@ -969,6 +979,13 @@ class TaskRepository:
                         published_at_utc=hit.get("published_at_utc"),
                         extra_metadata={
                             "node_key": step.node_key,
+                            "source_url": hit.get("source_url"),
+                            "author": hit.get("author"),
+                            "publisher": hit.get("publisher"),
+                            "language": hit.get("language"),
+                            "matched_provider_names": hit.get("matched_provider_names", [hit.get("provider")]),
+                            "matched_source_domains": hit.get("matched_source_domains", [hit.get("source_domain")]),
+                            "duplicate_count": hit.get("duplicate_count", 1),
                         },
                     )
                 )

@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from llm_scheduling_management_system.interfaces.http.dependencies import get_task_service
-from llm_scheduling_management_system.schemas.tasks import CreateTaskRequest, CreateTaskResponse
+from llm_scheduling_management_system.schemas.tasks import CreateTaskRequest, CreateTaskResponse, FinalReportResponse
 from llm_scheduling_management_system.services.task_service import TaskService
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -14,6 +14,16 @@ class PublicOpinionReportRequest(BaseModel):
     disable_cache: bool = True
     llm_profile_name: str = "advanced_reasoning_cn"
     execution_engine: str = "langgraph"
+    search_limit: int = 20
+    report_retry_count: int = 2
+    llm_model_retry_count: int = 2
+    report_fallback_profile_names: list[str] = Field(
+        default_factory=lambda: ["grok_reasoning_optional", "claude_opus_web_search_optional", "cheap_structured_cn"]
+    )
+    search_provider_names: list[str] = Field(
+        default_factory=lambda: ["tavily_search", "grok_search", "gpt_search", "exa_search"]
+    )
+    fetch_provider_name: str = "exa_contents"
 
 
 @router.post("/public-opinion", response_model=CreateTaskResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -28,9 +38,13 @@ def create_public_opinion_report(
             input={"topic": request.topic},
             options={
                 "disable_cache": request.disable_cache,
-                "search_provider_names": ["tavily_search", "grok_search", "exa_search"],
-                "fetch_provider_name": "exa_contents",
+                "search_provider_names": request.search_provider_names,
+                "search_limit": request.search_limit,
+                "fetch_provider_name": request.fetch_provider_name,
                 "llm_profile_name": request.llm_profile_name,
+                "report_retry_count": request.report_retry_count,
+                "llm_model_retry_count": request.llm_model_retry_count,
+                "report_fallback_profile_names": request.report_fallback_profile_names,
                 "execution_engine": request.execution_engine,
             },
         )
@@ -41,3 +55,17 @@ def create_public_opinion_report(
         progress=task.progress_percent,
         query_url=f"/api/v1/tasks/{task.id}",
     )
+
+
+@router.get("/public-opinion/{task_id}/final-report", response_model=FinalReportResponse)
+def get_public_opinion_final_report(
+    task_id: str,
+    service: TaskService = Depends(get_task_service),
+) -> FinalReportResponse:
+    payload = service.get_final_report(task_id)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "task_not_found", "message": f"Unknown task: {task_id}"},
+        )
+    return FinalReportResponse(**payload)

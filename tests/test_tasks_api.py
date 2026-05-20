@@ -1,3 +1,102 @@
+from llm_scheduling_management_system.execution.executors import (
+    ExtractOfficialResponsesExecutor,
+    FetchDocumentsExecutor,
+    LLMReportExecutor,
+    SearchFanoutExecutor,
+)
+from llm_scheduling_management_system.providers.types import FetchDocument, SearchHit, SearchResultBundle
+
+
+class _StubSourceRegistry:
+    def lookup(self, domain: str) -> dict:
+        return {
+            "region_hint": "overseas",
+            "publisher_type": "media",
+            "language": "en",
+            "official": False,
+        }
+
+
+class _StubSearchProvider:
+    def __init__(self, name: str, hits: list[SearchHit]) -> None:
+        self.name = name
+        self._hits = hits
+
+    def search(self, query: str, *, limit: int = 10) -> SearchResultBundle:
+        return SearchResultBundle(
+            provider=self.name,
+            hits=self._hits[:limit],
+            request_metadata={"vendor": self.name, "simulated": False, "limit": limit},
+        )
+
+
+class _StubSearchProviderFactory:
+    def __init__(self, providers) -> None:
+        self._providers = providers
+        self.config = type("Config", (), {"policy": type("Policy", (), {"max_results_per_provider": 30})()})()
+
+    def build_search_providers(self, provider_names: list[str]):
+        return [self._providers[name] for name in provider_names]
+
+    def build_default_search_providers(self):
+        return list(self._providers.values())
+
+
+class _StubFetchProvider:
+    def fetch(self, url: str) -> FetchDocument:
+        return FetchDocument(
+            provider="stub_fetch",
+            url=url,
+            canonical_url="https://example.com/shared-article",
+            title="Shared Article",
+            author="Reporter",
+            language="en",
+            content_text=f"Fetched content for {url}",
+            metadata={"vendor": "stub_fetch", "simulated": False},
+        )
+
+
+class _StubFetchFactory:
+    def build_fetch_provider_by_name(self, provider_name: str):
+        return _StubFetchProvider()
+
+    def build_default_fetch_provider(self):
+        return _StubFetchProvider()
+
+
+class _StubLLMProvider:
+    def __init__(self, provider_name: str, model_name: str, responses: list[str | Exception]) -> None:
+        self.provider = type("Provider", (), {"name": provider_name, "provider_type": "openai", "simulate": False})()
+        self.profile = type("Profile", (), {"model": model_name})()
+        self._responses = list(responses)
+
+    def generate(self, prompt: str) -> str:
+        if self._responses:
+            value = self._responses.pop(0)
+        else:
+            value = ""
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+class _StubLLMFactory:
+    def __init__(self, providers_by_profile: dict[str, _StubLLMProvider], fallback_profiles: dict[str, list[str]] | None = None) -> None:
+        self.providers_by_profile = providers_by_profile
+        self.fallback_profiles = fallback_profiles or {}
+
+    def build_profile_provider(self, profile_name: str):
+        return self.providers_by_profile[profile_name]
+
+    def resolve_profile_chain(self, primary_profile_name: str, extra_profile_names: list[str] | None = None) -> list[str]:
+        ordered = [primary_profile_name]
+        ordered.extend(self.fallback_profiles.get(primary_profile_name, []))
+        for item in extra_profile_names or []:
+            if item not in ordered:
+                ordered.append(item)
+        return ordered
+
+
 def test_create_task_returns_task_id(client):
     response = client.post(
         "/api/v1/tasks",
@@ -666,6 +765,7 @@ def test_task_options_can_override_search_fetch_and_llm_selection(client):
             "input": {"topic": "override test"},
             "options": {
                 "search_provider_names": ["exa_search"],
+                "search_limit": 1,
                 "fetch_provider_name": "exa_contents",
                 "llm_profile_name": "cheap_structured_cn",
             },
@@ -680,6 +780,7 @@ def test_task_options_can_override_search_fetch_and_llm_selection(client):
 
     assert len(search_invocations) == 1
     assert search_invocations[0]["provider_name"] == "exa_search"
+    assert search_invocations[0]["request_metadata"]["limit"] == 1
     assert fetch_invocations
     assert all(item["provider_name"] == "exa_contents" for item in fetch_invocations)
     assert llm_invocations[0]["profile_name"] == "cheap_structured_cn"
@@ -844,6 +945,7 @@ def test_search_hits_are_persisted_and_queryable(client):
     assert task_hits[0]["title"]
     assert task_hits[0]["source_type"] in {"news", "social"}
     assert "published_at_utc" in task_hits[0]
+    assert "source_url" in task_hits[0]["metadata"]
 
 
 def test_documents_are_persisted_and_queryable(client):
@@ -942,6 +1044,235 @@ def test_search_hits_can_be_filtered(client):
     assert all(item["source_type"] == "news" for item in source_filtered.json())
     assert all(item["region_hint"] == "overseas" for item in region_filtered.json())
     assert time_filtered.json()
+
+
+def test_search_fanout_deduplicates_hits_by_url_and_merges_fields():
+    providers = {
+        "provider_a": _StubSearchProvider(
+            "provider_a",
+            [
+                SearchHit(
+                    provider="provider_a",
+                    title="Shared headline",
+                    url="https://example.com/shared-article",
+                    source_domain="example.com",
+                    source_type="mainstream_media",
+                    query="q",
+                    published_at_utc="2026-05-01",
+                    snippet="short snippet",
+                    metadata={"author": "Author A", "publisher": "Publisher A", "language": "en"},
+                )
+            ],
+        ),
+        "provider_b": _StubSearchProvider(
+            "provider_b",
+            [
+                SearchHit(
+                    provider="provider_b",
+                    title="Shared headline with more detail",
+                    url="https://example.com/shared-article",
+                    source_domain="example.com",
+                    source_type="mainstream_media",
+                    query="q",
+                    published_at_utc="2026-05-01",
+                    snippet="a much longer snippet from provider b",
+                    metadata={"publisher": "Publisher B", "region_hint": "global"},
+                )
+            ],
+        ),
+    }
+    executor = SearchFanoutExecutor(search_provider_factory=_StubSearchProviderFactory(providers))
+    executor.source_registry = _StubSourceRegistry()
+    task = type(
+        "Task",
+        (),
+        {
+            "input_payload": {"topic": "q"},
+            "options_payload": {"search_provider_names": ["provider_a", "provider_b"], "search_limit": 5},
+        },
+    )()
+    step = type("Step", (), {"node_key": "search_fanout"})()
+
+    result = executor.execute(task, step)
+    hits = result.content_json["hits"]
+
+    assert len(hits) == 1
+    assert hits[0]["title"] == "Shared headline with more detail"
+    assert hits[0]["snippet"] == "a much longer snippet from provider b"
+    assert set(hits[0]["matched_provider_names"]) == {"provider_a", "provider_b"}
+    assert hits[0]["duplicate_count"] == 2
+    assert hits[0]["author"] == "Author A"
+
+
+def test_fetch_documents_deduplicates_documents_by_canonical_url():
+    executor = FetchDocumentsExecutor(search_provider_factory=_StubFetchFactory())
+    executor.source_registry = _StubSourceRegistry()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_x",
+            "options_payload": {"fetch_provider_name": "stub_fetch"},
+            "artifacts": [],
+        },
+    )()
+    artifact = type(
+        "Artifact",
+        (),
+        {
+            "id": "art_1",
+            "content_json": {
+                "hits": [
+                    {
+                        "provider": "provider_a",
+                        "title": "Shared headline",
+                        "source_url": "https://example.com/shared-article?ref=a",
+                        "source_domain": "example.com",
+                        "source_type": "mainstream_media",
+                        "region_hint": "overseas",
+                        "publisher_type": "media",
+                        "published_at_utc": "2026-05-01",
+                        "author": "Author A",
+                        "publisher": "Publisher A",
+                        "language": "en",
+                        "matched_provider_names": ["provider_a"],
+                        "duplicate_count": 1,
+                    },
+                    {
+                        "provider": "provider_b",
+                        "title": "Shared headline updated",
+                        "source_url": "https://example.com/shared-article?ref=b",
+                        "source_domain": "example.com",
+                        "source_type": "mainstream_media",
+                        "region_hint": "overseas",
+                        "publisher_type": "media",
+                        "published_at_utc": "2026-05-01",
+                        "author": "",
+                        "publisher": "Publisher B",
+                        "language": "en",
+                        "matched_provider_names": ["provider_b"],
+                        "duplicate_count": 1,
+                    },
+                ]
+            }
+        },
+    )()
+    step = type("Step", (), {"input_artifact_refs": ["art_1"], "node_key": "fetch_documents"})()
+    task.artifacts = [artifact]
+
+    result = executor.execute(task, step)
+    docs = result.content_json["documents"]
+
+    assert len(docs) == 1
+    assert docs[0]["canonical_url"] == "https://example.com/shared-article"
+    assert set(docs[0]["metadata"]["matched_provider_names"]) == {"provider_a", "provider_b"}
+    assert docs[0]["metadata"]["duplicate_count"] == 2
+
+
+def test_llm_report_executor_uses_fallback_profile_after_retries():
+    factory = _StubLLMFactory(
+        providers_by_profile={
+            "primary_profile": _StubLLMProvider("primary_provider", "model-a", ["", ""]),
+            "fallback_profile": _StubLLMProvider("fallback_provider", "model-b", ["fallback success"]),
+        },
+        fallback_profiles={"primary_profile": ["fallback_profile"]},
+    )
+    executor = LLMReportExecutor(llm_provider_factory=factory, profile_name="primary_profile")
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_stub",
+            "input_payload": {"topic": "fallback test"},
+            "options_payload": {
+                "llm_profile_name": "primary_profile",
+                "report_retry_count": 0,
+                "llm_model_retry_count": 1,
+                "report_fallback_profile_names": [],
+            },
+            "artifacts": [],
+        },
+    )()
+    step = type("Step", (), {"node_key": "generate_public_opinion_report", "input_artifact_refs": []})()
+
+    result = executor.execute(task, step)
+
+    assert result.content_text == "fallback success"
+    assert result.content_json["resolved_profile_name"] == "fallback_profile"
+    assert len(result.llm_invocations) == 3
+    assert result.llm_invocations[-1].profile_name == "fallback_profile"
+
+
+def test_final_report_endpoint_returns_generated_report(client):
+    create_response = client.post(
+        "/api/v1/tasks",
+        json={
+            "template_id": "event_summary_v1",
+            "input": {"topic": "final report test"},
+            "options": {},
+        },
+    )
+    task_id = create_response.json()["task_id"]
+    client.post(f"/api/v1/tasks/{task_id}/run")
+
+    response = client.get(f"/api/v1/tasks/{task_id}/final-report")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["task_id"] == task_id
+    assert payload["ready"] is True
+    assert payload["report_state"] == "ready"
+    assert payload["artifact_id"]
+    assert payload["report_text"]
+    assert payload["timeline_count"] >= 0
+    assert payload["official_response_count"] >= 0
+    assert payload["media_viewpoint_count"] >= 0
+    assert payload["public_viewpoint_count"] >= 0
+    assert "timeline" in payload
+    assert "official_responses" in payload
+    assert "media_viewpoints" in payload
+    assert "public_viewpoints" in payload
+
+
+def test_extract_official_responses_includes_response_content_and_key_points():
+    executor = ExtractOfficialResponsesExecutor()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_official",
+            "artifacts": [
+                type(
+                    "Artifact",
+                    (),
+                    {
+                        "id": "art_official",
+                        "schema_name": "merged_results_bundle",
+                        "content_json": {
+                            "documents": [
+                                {
+                                    "title": "国务院成立事故调查组",
+                                    "url": "https://example.com/official",
+                                    "source_domain": "example.com",
+                                    "published_at_utc": "2026-05-08",
+                                    "content_preview": "国务院成立事故调查组，并要求尽快查明原因，严肃追责，全面开展安全整治。",
+                                }
+                            ]
+                        },
+                    },
+                )()
+            ],
+        },
+    )()
+    step = type("Step", (), {"node_key": "extract_official_responses", "input_artifact_refs": ["art_official"]})()
+
+    result = executor.execute(task, step)
+    responses = result.content_json["official_responses"]
+
+    assert len(responses) == 1
+    assert responses[0]["response_excerpt"]
+    assert responses[0]["response_content"]
+    assert responses[0]["response_key_points"]
 
 
 def test_repeated_search_task_uses_cached_search_fanout(client):

@@ -1,5 +1,5 @@
 from llm_scheduling_management_system.config_loader import load_llm_config, load_search_config
-from llm_scheduling_management_system.config_models import LLMConfig, SearchConfig
+from llm_scheduling_management_system.config_models import LLMConfig, LLMProfileConfig, SearchConfig
 from llm_scheduling_management_system.providers.crawl import FirecrawlCrawlProvider, TavilyCrawlProvider
 from llm_scheduling_management_system.providers.fetch import (
     ExaFetchProvider,
@@ -14,6 +14,7 @@ from llm_scheduling_management_system.providers.search import (
     ExaSearchProvider,
     FirecrawlSearchProvider,
     GrokSearchProvider,
+    OpenAIWebSearchProvider,
     TavilySearchProvider,
     TinyFishSearchProvider,
 )
@@ -37,6 +38,8 @@ class SearchProviderFactory:
             return TinyFishSearchProvider(provider)
         if provider.vendor == "grok":
             return GrokSearchProvider(provider)
+        if provider.vendor == "openai":
+            return OpenAIWebSearchProvider(provider)
         return None
 
     def build_default_search_providers(self) -> list[SearchProvider]:
@@ -93,8 +96,32 @@ class LLMProviderFactory:
     def __init__(self, config: LLMConfig | None = None) -> None:
         self.config = config or load_llm_config()
 
+    def get_profile_config(self, profile_name: str) -> LLMProfileConfig | None:
+        return next((item for item in self.config.profiles if item.name == profile_name), None)
+
+    def resolve_profile_chain(self, primary_profile_name: str, extra_profile_names: list[str] | None = None) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        def append_profile(profile_name: str) -> None:
+            if not profile_name or profile_name in seen:
+                return
+            seen.add(profile_name)
+            ordered.append(profile_name)
+
+        append_profile(primary_profile_name)
+        profile = self.get_profile_config(primary_profile_name)
+        if profile is not None:
+            for fallback in profile.fallback_profiles:
+                append_profile(fallback)
+
+        for profile_name in extra_profile_names or []:
+            append_profile(profile_name)
+
+        return ordered
+
     def build_profile_provider(self, profile_name: str) -> LLMProvider:
-        profile = next((item for item in self.config.profiles if item.name == profile_name), None)
+        profile = self.get_profile_config(profile_name)
         if profile is None:
             return MockLLMProvider("mock_llm_default")
         provider = next((item for item in self.config.providers if item.name == profile.provider), None)

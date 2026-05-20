@@ -309,6 +309,86 @@ class TaskService:
             published_before=published_before,
         )
 
+    def get_final_report(self, task_id: str) -> dict | None:
+        self.ensure_bootstrap_state()
+        task = self.repository.get_task(task_id)
+        if task is None:
+            return None
+
+        artifacts = self.repository.list_task_artifacts(task_id)
+        artifact_by_schema: dict[str, object] = {}
+        for artifact in artifacts:
+            artifact_by_schema[artifact.schema_name] = artifact
+
+        timeline_artifact = artifact_by_schema.get("timeline_bundle")
+        official_artifact = artifact_by_schema.get("official_response_bundle")
+        opinion_artifact = artifact_by_schema.get("public_opinion_segments")
+        timeline = timeline_artifact.content_json.get("timeline", []) if timeline_artifact else []
+        official_responses = official_artifact.content_json.get("official_responses", []) if official_artifact else []
+        media_viewpoints = opinion_artifact.content_json.get("media_viewpoints", []) if opinion_artifact else []
+        public_viewpoints = opinion_artifact.content_json.get("public_viewpoints", []) if opinion_artifact else []
+        summary_fields = {
+            "timeline_count": len(timeline),
+            "official_response_count": len(official_responses),
+            "media_viewpoint_count": len(media_viewpoints),
+            "public_viewpoint_count": len(public_viewpoints),
+            "timeline": timeline,
+            "official_responses": official_responses,
+            "media_viewpoints": media_viewpoints,
+            "public_viewpoints": public_viewpoints,
+        }
+
+        report_artifacts = [artifact for artifact in artifacts if artifact.artifact_type == "report.generated"]
+        if not report_artifacts:
+            return {
+                "task_id": task.id,
+                "task_status": task.status,
+                "ready": False,
+                "report_state": "not_generated",
+                "message": "Final report has not been generated yet.",
+                **summary_fields,
+            }
+
+        report_artifact = max(report_artifacts, key=lambda item: item.created_at)
+        report_text = (report_artifact.content_text or report_artifact.content_json.get("message") or "").strip()
+        matching_invocation = None
+        if report_artifact.step_run_id:
+            step_invocations = self.repository.list_step_llm_invocations(report_artifact.step_run_id)
+            if step_invocations:
+                matching_invocation = step_invocations[-1]
+
+        if not report_text:
+            return {
+                "task_id": task.id,
+                "task_status": task.status,
+                "ready": False,
+                "report_state": "empty",
+                "artifact_id": report_artifact.id,
+                "step_run_id": report_artifact.step_run_id,
+                "generated_at": report_artifact.created_at,
+                "llm_profile_name": matching_invocation.profile_name if matching_invocation else None,
+                "llm_model_name": matching_invocation.model_name if matching_invocation else None,
+                "llm_invocation_id": matching_invocation.id if matching_invocation else None,
+                "message": "Final report artifact exists but report text is empty.",
+                **summary_fields,
+            }
+
+        return {
+            "task_id": task.id,
+            "task_status": task.status,
+            "ready": True,
+            "report_state": "ready",
+            "artifact_id": report_artifact.id,
+            "step_run_id": report_artifact.step_run_id,
+            "report_text": report_text,
+            "generated_at": report_artifact.created_at,
+            "llm_profile_name": matching_invocation.profile_name if matching_invocation else None,
+            "llm_model_name": matching_invocation.model_name if matching_invocation else None,
+            "llm_invocation_id": matching_invocation.id if matching_invocation else None,
+            "message": "ok",
+            **summary_fields,
+        }
+
     def run_task(self, task_id: str):
         self.ensure_bootstrap_state()
         task = self.repository.get_task(task_id)

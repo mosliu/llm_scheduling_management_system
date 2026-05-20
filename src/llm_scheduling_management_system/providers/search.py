@@ -1,9 +1,151 @@
+import json
+import re
+from urllib.parse import urlparse
+
 from llm_scheduling_management_system.config_models import SearchProviderConfig
 from llm_scheduling_management_system.providers.http_client import HTTPProviderClient, ProviderRequest
 from llm_scheduling_management_system.providers.interfaces import SearchProvider
 from llm_scheduling_management_system.providers.types import SearchHit, SearchResultBundle
-import json
-import re
+
+
+SEARCH_RESULT_JSON_SHAPE = (
+    '{"results":[{"title":"","url":"","content":"","releaseDate":"","author":"","sourceType":"",'
+    '"publisher":"","language":"","regionHint":""}]}'
+)
+DEFAULT_WEB_RESEARCH_SYSTEM_PROMPT = (
+    "You are a web intelligence retrieval engine for event analysis and public-opinion research. "
+    "Use the web search tool to gather factual, source-attributed results. Prioritize official sources, "
+    "primary sources, major media, and representative public discussion when relevant. Pay attention to "
+    "publication time and freshness. Never fabricate missing metadata. Return only strict JSON with shape "
+    f"{SEARCH_RESULT_JSON_SHAPE}. No markdown."
+)
+DEFAULT_WEB_RESEARCH_USER_PROMPT_TEMPLATE = (
+    "Search the web for: {query}\n"
+    "Return up to {limit} high-quality, non-duplicate results as strict JSON only.\n"
+    "Each result must include title, url, content, releaseDate, author, sourceType, publisher, language, regionHint.\n"
+    "Rules:\n"
+    "- content must be a concise factual summary of the source, not your final analysis\n"
+    "- preserve the source publication time when available\n"
+    "- sourceType must be one of: official, mainstream_media, local_media, self_media, social, encyclopedia, forum, other\n"
+    "- publisher should be the organization, outlet, platform, or agency name when available\n"
+    "- language should be the source language when available\n"
+    "- regionHint should be cn, overseas, global, or empty if unknown\n"
+    "- if a field is unknown, return an empty string rather than inventing it\n"
+    "- return JSON only, with no markdown fences and no prose"
+)
+
+
+def _extract_domain(url: str | None) -> str:
+    if not url:
+        return "unknown"
+    try:
+        return urlparse(url).netloc or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _render_prompt_template(template: str, *, query: str, limit: int) -> str:
+    try:
+        return template.format(query=query, limit=limit, schema=SEARCH_RESULT_JSON_SHAPE)
+    except Exception:
+        return template
+
+
+def _extract_text_payload(response_payload) -> str:
+    if isinstance(response_payload, str):
+        stripped = response_payload.strip()
+        if stripped.startswith("data:"):
+            parts: list[str] = []
+            for line in response_payload.splitlines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = line[len("data:") :].strip()
+                if payload == "[DONE]":
+                    continue
+                try:
+                    parsed = json.loads(payload)
+                except Exception:
+                    continue
+                choices = parsed.get("choices") or []
+                for choice in choices:
+                    delta = choice.get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        parts.append(content)
+                    message = choice.get("message") or {}
+                    message_content = message.get("content")
+                    if message_content:
+                        parts.append(message_content)
+            if parts:
+                return "".join(parts)
+        return response_payload
+    if not isinstance(response_payload, dict):
+        return ""
+
+    choices = response_payload.get("choices")
+    if choices:
+        try:
+            return choices[0]["message"]["content"]
+        except Exception:
+            pass
+
+    output = response_payload.get("output", [])
+    for item in output:
+        if item.get("type") != "message":
+            continue
+        for content in item.get("content", []):
+            text = content.get("text")
+            if text:
+                return text
+    return ""
+
+
+def _parse_search_results_text(
+    provider_name: str,
+    query: str,
+    response_text: str,
+    *,
+    limit: int,
+    default_source_type: str,
+) -> list[SearchHit]:
+    parsed = {"results": []}
+    if isinstance(response_text, str):
+        stripped = response_text.strip()
+        stripped = re.sub(r"^```json\s*|\s*```$", "", stripped, flags=re.MULTILINE)
+        try:
+            parsed = json.loads(stripped)
+        except Exception:
+            match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
+            if match:
+                try:
+                    parsed = json.loads(match.group(0))
+                except Exception:
+                    parsed = {"results": []}
+
+    results = parsed.get("results", []) if isinstance(parsed, dict) else []
+    hits = []
+    for item in results[:limit]:
+        url = item.get("url")
+        hits.append(
+            SearchHit(
+                provider=provider_name,
+                title=item.get("title", ""),
+                url=url,
+                source_domain=_extract_domain(url),
+                source_type=item.get("sourceType") or item.get("source_type") or default_source_type,
+                query=query,
+                published_at_utc=item.get("releaseDate") or item.get("publishedDate") or item.get("published_at_utc"),
+                snippet=item.get("content") or item.get("snippet"),
+                metadata={
+                    "author": item.get("author"),
+                    "publisher": item.get("publisher"),
+                    "language": item.get("language"),
+                    "region_hint": item.get("regionHint") or item.get("region_hint"),
+                },
+            )
+        )
+    return hits
 
 
 class BaseConfiguredSearchProvider(SearchProvider):
@@ -43,6 +185,7 @@ class BaseConfiguredSearchProvider(SearchProvider):
                 "vendor": self.config.vendor,
                 "base_url": self.config.base_url,
                 "timeout_seconds": self.config.timeout_seconds,
+                "limit": limit,
                 "request": {
                     "method": request.method,
                     "url": request.url,
@@ -60,6 +203,7 @@ class BaseConfiguredSearchProvider(SearchProvider):
             {
                 "simulated": False,
                 "vendor": self.config.vendor,
+                "limit": limit,
                 "request": {
                     "method": request.method,
                     "url": request.url,
@@ -86,7 +230,7 @@ class ExaSearchProvider(BaseConfiguredSearchProvider):
                 provider=self.config.name,
                 title=item.get("title", ""),
                 url=item.get("url"),
-                source_domain=item.get("url", "").split("/")[2] if item.get("url") else "unknown",
+                source_domain=_extract_domain(item.get("url")),
                 source_type="news",
                 query=query,
                 published_at_utc=item.get("publishedDate"),
@@ -119,7 +263,7 @@ class TavilySearchProvider(BaseConfiguredSearchProvider):
                 provider=self.config.name,
                 title=item.get("title", ""),
                 url=item.get("url"),
-                source_domain=item.get("url", "").split("/")[2] if item.get("url") else "unknown",
+                source_domain=_extract_domain(item.get("url")),
                 source_type="news",
                 query=query,
                 snippet=item.get("content") or item.get("raw_content"),
@@ -146,7 +290,7 @@ class FirecrawlSearchProvider(BaseConfiguredSearchProvider):
                 provider=self.config.name,
                 title=item.get("title", ""),
                 url=item.get("url"),
-                source_domain=item.get("url", "").split("/")[2] if item.get("url") else "unknown",
+                source_domain=_extract_domain(item.get("url")),
                 source_type="news",
                 query=query,
                 snippet=item.get("description") or item.get("markdown"),
@@ -186,19 +330,16 @@ class TinyFishSearchProvider(BaseConfiguredSearchProvider):
 
 class GrokSearchProvider(BaseConfiguredSearchProvider):
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
-        system_prompt = self.config.default_options.get(
-            "system",
-            "You are a web research model. Return only JSON with shape "
-            '{"results":[{"title":"","url":"","content":"","releaseDate":"","author":""}]}.',
+        system_prompt = self.config.default_options.get("system", DEFAULT_WEB_RESEARCH_SYSTEM_PROMPT)
+        user_prompt_template = self.config.default_options.get(
+            "user_prompt_template",
+            DEFAULT_WEB_RESEARCH_USER_PROMPT_TEMPLATE,
         )
         messages = [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": (
-                    f"Search the web for: {query}. Return up to {limit} high-quality results as strict JSON only. "
-                    "Each result must include title, url, content, releaseDate, author."
-                ),
+                "content": _render_prompt_template(user_prompt_template, query=query, limit=limit),
             },
         ]
         json_body = {
@@ -206,6 +347,11 @@ class GrokSearchProvider(BaseConfiguredSearchProvider):
             "messages": messages,
             "tools": self.config.default_options.get("tools", [{"type": "web_search", "name": "web_search"}]),
             "temperature": self.config.default_options.get("temperature", 0),
+            **{
+                key: value
+                for key, value in self.config.default_options.items()
+                if key not in {"model", "system", "user_prompt_template", "tools", "temperature"}
+            },
         }
         return ProviderRequest(
             method="POST",
@@ -215,39 +361,94 @@ class GrokSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
-        content = ""
-        if isinstance(response_payload, dict):
-            try:
-                content = response_payload["choices"][0]["message"]["content"]
-            except Exception:
-                content = ""
-        parsed = {"results": []}
-        if isinstance(content, str):
-            stripped = content.strip()
-            stripped = re.sub(r"^```json\s*|\s*```$", "", stripped, flags=re.MULTILINE)
-            try:
-                parsed = json.loads(stripped)
-            except Exception:
-                match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-                if match:
-                    try:
-                        parsed = json.loads(match.group(0))
-                    except Exception:
-                        parsed = {"results": []}
+        hits = _parse_search_results_text(
+            self.config.name,
+            query,
+            _extract_text_payload(response_payload),
+            limit=limit,
+            default_source_type="web_search",
+        )
+        return SearchResultBundle(provider=self.config.name, hits=hits)
 
-        results = parsed.get("results", []) if isinstance(parsed, dict) else []
-        hits = [
-            SearchHit(
-                provider=self.config.name,
-                title=item.get("title", ""),
-                url=item.get("url"),
-                source_domain=item.get("url", "").split("/")[2] if item.get("url") else "unknown",
-                source_type="web_search",
-                query=query,
-                published_at_utc=item.get("releaseDate"),
-                snippet=item.get("content"),
-                metadata={"author": item.get("author")},
+
+class OpenAIWebSearchProvider(BaseConfiguredSearchProvider):
+    def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        api_mode = self.config.default_options.get("api_mode", "responses")
+        system_prompt = self.config.default_options.get("system", DEFAULT_WEB_RESEARCH_SYSTEM_PROMPT)
+        user_prompt_template = self.config.default_options.get(
+            "user_prompt_template",
+            DEFAULT_WEB_RESEARCH_USER_PROMPT_TEMPLATE,
+        )
+        user_prompt = _render_prompt_template(user_prompt_template, query=query, limit=limit)
+        tools = self.config.default_options.get("tools", [{"type": "web_search"}])
+
+        if api_mode == "chat_completions":
+            json_body = {
+                "model": self.config.default_options.get("model", "gpt-5.5"),
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "tools": tools,
+                "stream": False,
+                "temperature": self.config.default_options.get("temperature", 0),
+                **{
+                    key: value
+                    for key, value in self.config.default_options.items()
+                    if key
+                    not in {
+                        "api_mode",
+                        "model",
+                        "system",
+                        "user_prompt_template",
+                        "tools",
+                        "temperature",
+                    }
+                },
+            }
+            return ProviderRequest(
+                method="POST",
+                url=self.http_client.build_url("/chat/completions"),
+                headers={"Authorization": f"Bearer {self.config.api_key}", **self.config.extra_headers},
+                json_body=json_body,
             )
-            for item in results[:limit]
-        ]
+
+        json_body = {
+            "model": self.config.default_options.get("model", "gpt-5.5"),
+            "instructions": self.config.default_options.get("instructions", system_prompt),
+            "input": user_prompt,
+            "tools": tools,
+            "reasoning": self.config.default_options.get("reasoning", {"effort": "low", "summary": "detailed"}),
+            "max_output_tokens": self.config.default_options.get("max_output_tokens", 2500),
+            **{
+                key: value
+                for key, value in self.config.default_options.items()
+                if key
+                not in {
+                    "api_mode",
+                    "model",
+                    "system",
+                    "instructions",
+                    "user_prompt_template",
+                    "tools",
+                    "reasoning",
+                    "max_output_tokens",
+                }
+            },
+        }
+        return ProviderRequest(
+            method="POST",
+            url=self.http_client.build_url("/responses"),
+            headers={"Authorization": f"Bearer {self.config.api_key}", **self.config.extra_headers},
+            json_body=json_body,
+        )
+
+    def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        hits = _parse_search_results_text(
+            self.config.name,
+            query,
+            _extract_text_payload(response_payload),
+            limit=limit,
+            default_source_type="web_search",
+        )
         return SearchResultBundle(provider=self.config.name, hits=hits)

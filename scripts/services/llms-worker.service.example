@@ -1,0 +1,18 @@
+[Unit]
+Description=LLM Scheduling Management System Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/llm-scheduling-management-system
+EnvironmentFile=/opt/llm-scheduling-management-system/.env
+ExecStart=/opt/llm-scheduling-management-system/scripts/services/run-worker.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/llm-scheduling-management-system/logs/worker.service.log
+StandardError=append:/opt/llm-scheduling-management-system/logs/worker.service.err.log
+
+[Install]
+WantedBy=multi-user.target

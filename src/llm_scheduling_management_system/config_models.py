@@ -24,7 +24,7 @@ class EmbeddedSearchProviderConfig(BaseModel):
 
 class SearchPolicyConfig(BaseModel):
     default_time_window_days: int = 7
-    max_results_per_provider: int = 50
+    max_results_per_provider: int = 30
     default_search_providers: list[str] = Field(default_factory=list)
     default_fetch_provider: str | None = None
     default_crawl_provider: str | None = None

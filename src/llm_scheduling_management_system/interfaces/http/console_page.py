@@ -247,6 +247,7 @@ HTML = r"""
             <div>
               <label for="searchProvidersSelect">Search Providers</label>
               <select id="searchProvidersSelect" multiple size="4"></select>
+              <div class="message">Multiple providers can be selected and will fan out in parallel.</div>
             </div>
             <div>
               <label for="fetchProviderSelect">Fetch Provider</label>
@@ -271,7 +272,10 @@ HTML = r"""
               <label for="taskTenantInput">Tenant</label>
               <input id="taskTenantInput" value="default" />
             </div>
-            <div></div>
+            <div>
+              <label for="searchLimitInput">Search Limit Per Provider</label>
+              <input id="searchLimitInput" type="number" min="1" value="30" />
+            </div>
           </div>
           <div class="row">
             <div>
@@ -651,6 +655,7 @@ HTML = r"""
       const selectedFetchProvider = document.getElementById('fetchProviderSelect').value;
       const selectedLLMProfile = document.getElementById('llmProfileSelect').value;
       const executionEngine = document.getElementById('executionEngineSelect').value;
+      const searchLimit = parseInt(document.getElementById('searchLimitInput').value || '30', 10);
       const input = { ...extraInput };
       if (topic) input.topic = topic;
       if (start || end) {
@@ -660,6 +665,7 @@ HTML = r"""
         };
       }
       if (selectedSearchProviders.length) options.search_provider_names = selectedSearchProviders;
+      if (!Number.isNaN(searchLimit) && searchLimit > 0) options.search_limit = searchLimit;
       if (selectedFetchProvider) options.fetch_provider_name = selectedFetchProvider;
       if (selectedLLMProfile) options.llm_profile_name = selectedLLMProfile;
       if (executionEngine) options.execution_engine = executionEngine;

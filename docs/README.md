@@ -41,7 +41,11 @@ The target business scenarios include:
 
 ## Local Development
 
-This repository now includes a minimal executable scaffold.
+This repository now includes a runnable MVP backend plus local operator console.
+
+The operational entry guide lives in the repository root:
+
+- [../README.md](../README.md)
 
 Recommended commands:
 
@@ -57,20 +61,25 @@ uv run pytest
 
 Notes:
 
-- `dev_reset_db.py` is currently a development-only reset path for the local SQLite database.
-- It is needed because the current project state does not yet include a migration system such as Alembic.
-- Alembic migration scaffolding is now present and `uv run alembic upgrade head` can initialize the schema.
-- `dev_reset_db.py` is still useful when local development needs a full clean rebuild.
+- `uv run alembic upgrade head` is the standard schema initialization path.
+- `dev_reset_db.py` is a development-only reset path that is still useful when local development needs a full clean rebuild.
 - `dev_run_worker.py` supports `--mode once`, `--mode until-idle`, and `--mode loop`.
 - `dev_export_task_bundle.py` exports `/bundle` output to a local JSON file under `artifacts/` by default.
 - Logging now uses Loguru and writes to both console and `logs/app.log`.
 - File logs are configured for daily rotation.
+- The API also exposes `GET /healthz`.
 - Runtime config loading now prefers local files such as `config/search.toml` and `config/llm.toml`.
 - If local files are absent, the system falls back to the checked-in `*.example.toml` files.
 - Repeated identical tasks now support cache hits at `search_fanout` and deterministic downstream steps.
+- `search_fanout` now supports parallel multi-provider fanout with task-level `search_limit`; the default limit is `30` results per provider.
+- Final report generation now supports automatic retry, per-model retry, fallback profiles, and a dedicated `final-report` polling endpoint that can return both report text and structured sections.
 - Provider configs now support `simulate=true|false`; set `simulate=false` in local config when moving from mock execution toward real HTTP integrations.
 - The local console is available at `/console` and now includes task creation, task control, provider selection, and continuation tools.
-- Real provider integration has started: local runtime can use real Tavily search, real Exa search/fetch, and a real OpenAI-compatible LLM gateway when configured.
+- Real provider integration has started: local runtime can use real Tavily search, real Exa search/fetch, Grok model-embedded search, OpenAI-compatible web search, OpenAI-compatible generation gateways, and optional Claude relay profiles when configured.
+- A topic-only convenience endpoint exists at `POST /api/v1/reports/public-opinion`.
+- Windows deployment helpers are available under `scripts/services/`.
+- Linux `systemd` deployment templates are available under `scripts/services/` and should be treated as the primary server deployment path.
+- A Linux one-shot deployment script is available at `scripts/services/deploy.sh`.
 
 ## Core Principles
 

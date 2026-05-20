@@ -18,6 +18,7 @@ from llm_scheduling_management_system.schemas.tasks import (
     CreateTaskRequest,
     CreateTaskResponse,
     DocumentResponse,
+    FinalReportResponse,
     FetchInvocationResponse,
     LLMInvocationResponse,
     RunTaskResponse,
@@ -490,6 +491,20 @@ def get_task_bundle(
         tool_invocations=[map_tool_invocation(item) for item in tool_invocations],
         llm_invocations=[map_llm_invocation(item) for item in llm_invocations],
     )
+
+
+@router.get("/{task_id}/final-report", response_model=FinalReportResponse)
+def get_task_final_report(
+    task_id: str,
+    service: TaskService = Depends(get_task_service),
+) -> FinalReportResponse:
+    payload = service.get_final_report(task_id)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "task_not_found", "message": f"Unknown task: {task_id}"},
+        )
+    return FinalReportResponse(**payload)
 
 
 @router.post("/{task_id}/run", response_model=RunTaskResponse)

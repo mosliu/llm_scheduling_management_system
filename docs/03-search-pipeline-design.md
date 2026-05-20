@@ -49,6 +49,13 @@ search_fanout
 
 This subgraph should be reused in multiple business workflows.
 
+Current implementation note:
+
+- `search_fanout` already supports task-level `search_provider_names`
+- multiple selected providers can run in parallel
+- `search_limit` is configurable per task
+- the current default limit is `30` results per provider
+
 ## 4. Node Responsibilities
 
 ## 4.1 Search Provider Nodes
@@ -344,6 +351,7 @@ Current referenced providers include:
 - Tavily
 - TinyFish
 - Grok web search and X search
+- OpenAI web search through the `responses` API
 
 ## 11.1 Provider Role Categories
 

@@ -1,7 +1,13 @@
 from llm_scheduling_management_system.config_models import LLMProfileConfig, LLMProviderConfig, SearchProviderConfig
 from llm_scheduling_management_system.providers.llms import AnthropicProvider, OpenAIProvider
 from llm_scheduling_management_system.providers.fetch import FirecrawlFetchProvider
-from llm_scheduling_management_system.providers.search import ExaSearchProvider, FirecrawlSearchProvider, TavilySearchProvider, TinyFishSearchProvider
+from llm_scheduling_management_system.providers.search import (
+    ExaSearchProvider,
+    FirecrawlSearchProvider,
+    OpenAIWebSearchProvider,
+    TavilySearchProvider,
+    TinyFishSearchProvider,
+)
 
 
 def _search_config(vendor: str, name: str, base_url: str) -> SearchProviderConfig:
@@ -58,6 +64,72 @@ def test_tavily_request_includes_default_options():
     assert request.json_body["topic"] == "general"
     assert request.json_body["search_depth"] == "basic"
     assert request.json_body["include_answer"] is True
+
+
+def test_openai_web_search_provider_builds_responses_request():
+    config = SearchProviderConfig(
+        name="gpt_search",
+        provider_type="model_embedded_search",
+        vendor="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+        default_options={
+            "api_mode": "responses",
+            "model": "gpt-5.5",
+            "tools": [{"type": "web_search"}],
+            "reasoning": {"effort": "low", "summary": "detailed"},
+        },
+    )
+
+    provider = OpenAIWebSearchProvider(config)
+    request = provider.build_request("hello", limit=3)
+
+    assert request.url.endswith("/responses")
+    assert request.json_body["model"] == "gpt-5.5"
+    assert request.json_body["tools"][0]["type"] == "web_search"
+    assert "Return up to 3" in request.json_body["input"]
+
+
+def test_openai_web_search_provider_parses_structured_results():
+    config = SearchProviderConfig(
+        name="gpt_search",
+        provider_type="model_embedded_search",
+        vendor="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+    )
+    provider = OpenAIWebSearchProvider(config)
+
+    payload = {
+        "output": [
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "text": (
+                            '{"results":[{"title":"T1","url":"https://openai.com/index/a",'
+                            '"content":"C1","releaseDate":"2026-05-12","author":"OpenAI",'
+                            '"sourceType":"official","publisher":"OpenAI","language":"en","regionHint":"global"}]}'
+                        )
+                    }
+                ],
+            }
+        ]
+    }
+
+    bundle = provider.parse_response("q", payload, limit=5)
+
+    assert bundle.hits[0].title == "T1"
+    assert bundle.hits[0].source_domain == "openai.com"
+    assert bundle.hits[0].source_type == "official"
+    assert bundle.hits[0].metadata["publisher"] == "OpenAI"
+    assert bundle.hits[0].metadata["region_hint"] == "global"
 
 
 def test_llm_providers_build_expected_requests():

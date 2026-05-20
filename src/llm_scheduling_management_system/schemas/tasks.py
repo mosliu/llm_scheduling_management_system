@@ -255,6 +255,29 @@ class RunTaskResponse(BaseModel):
     completed_step_count: int
 
 
+class FinalReportResponse(BaseModel):
+    task_id: str
+    task_status: str
+    ready: bool
+    report_state: str
+    artifact_id: str | None = None
+    step_run_id: str | None = None
+    report_text: str | None = None
+    generated_at: datetime | None = None
+    llm_profile_name: str | None = None
+    llm_model_name: str | None = None
+    llm_invocation_id: str | None = None
+    timeline_count: int = 0
+    official_response_count: int = 0
+    media_viewpoint_count: int = 0
+    public_viewpoint_count: int = 0
+    timeline: list[dict[str, Any]] = Field(default_factory=list)
+    official_responses: list[dict[str, Any]] = Field(default_factory=list)
+    media_viewpoints: list[dict[str, Any]] = Field(default_factory=list)
+    public_viewpoints: list[dict[str, Any]] = Field(default_factory=list)
+    message: str | None = None
+
+
 class CreateDerivedTaskRequest(BaseModel):
     template_id: str
     input: dict[str, Any] = Field(default_factory=dict)
