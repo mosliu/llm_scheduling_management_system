@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 os.environ["LSMS_SEARCH_CONFIG_PATH"] = "config/search.example.toml"
 os.environ["LSMS_LLM_CONFIG_PATH"] = "config/llm.example.toml"
 os.environ["LSMS_SOURCE_REGISTRY_CONFIG_PATH"] = "config/source_registry.example.toml"
+os.environ["LSMS_ACCESS_CONFIG_PATH"] = "config/access.example.toml"
 
 from llm_scheduling_management_system.db import Base
 from llm_scheduling_management_system.domain import models  # noqa: F401

@@ -29,6 +29,7 @@ data/
 
 # Local configuration
 config/app.toml
+config/access.toml
 config/llm.toml
 config/search.toml
 config/mcp.toml

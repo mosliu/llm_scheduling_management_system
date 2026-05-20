@@ -1,6 +1,18 @@
 from pydantic import BaseModel, Field
 
 
+class AccessCredentialConfig(BaseModel):
+    user: str
+    password: str
+
+
+class AccessConfig(BaseModel):
+    enabled: bool = False
+    password_header_name: str = "X-LSMS-Password"
+    basic_auth_realm: str = "llm-scheduling-management-system"
+    credentials: list[AccessCredentialConfig] = Field(default_factory=list)
+
+
 class SearchProviderConfig(BaseModel):
     name: str
     provider_type: str

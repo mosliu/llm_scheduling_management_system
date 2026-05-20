@@ -10,6 +10,7 @@ from llm_scheduling_management_system.interfaces.http.routes.reports import rout
 from llm_scheduling_management_system.interfaces.http.routes.system import router as system_router
 from llm_scheduling_management_system.interfaces.http.routes.tasks import router as tasks_router
 from llm_scheduling_management_system.logging import configure_logging, logger
+from llm_scheduling_management_system.security import register_access_control
 from llm_scheduling_management_system.settings import settings
 
 
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         version="0.1.0",
     )
+    register_access_control(app)
 
     @app.get("/healthz")
     def healthcheck() -> dict[str, str]:

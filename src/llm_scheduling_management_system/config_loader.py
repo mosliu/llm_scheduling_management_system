@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 import tomllib
 
-from llm_scheduling_management_system.config_models import LLMConfig, MCPConfig, SearchConfig, SourceRegistryConfig
+from llm_scheduling_management_system.config_models import AccessConfig, LLMConfig, MCPConfig, SearchConfig, SourceRegistryConfig
 
 
 def _load_toml(path: Path) -> dict:
@@ -23,6 +23,12 @@ def load_search_config(path: str | Path | None = None) -> SearchConfig:
     env_path = os.getenv("LSMS_SEARCH_CONFIG_PATH")
     config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/search.toml", "config/search.example.toml")
     return SearchConfig.model_validate(_load_toml(config_path))
+
+
+def load_access_config(path: str | Path | None = None) -> AccessConfig:
+    env_path = os.getenv("LSMS_ACCESS_CONFIG_PATH")
+    config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/access.toml", "config/access.example.toml")
+    return AccessConfig.model_validate(_load_toml(config_path))
 
 
 def load_llm_config(path: str | Path | None = None) -> LLMConfig:

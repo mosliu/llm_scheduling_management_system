@@ -1,0 +1,15 @@
+# Manual-only access control configuration.
+# This file is not exposed through the configuration API.
+# Copy to config/access.toml and replace the sample passwords before enabling.
+
+enabled = false
+password_header_name = "X-LSMS-Password"
+basic_auth_realm = "llm-scheduling-management-system"
+
+[[credentials]]
+user = "admin"
+password = "replace-with-a-strong-password"
+
+[[credentials]]
+user = "operator"
+password = "replace-with-another-strong-password"

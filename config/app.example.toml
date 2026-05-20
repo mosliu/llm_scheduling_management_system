@@ -17,3 +17,4 @@ enable_sse = true
 
 [security]
 enable_auth = false
+# Actual runtime HTTP access control is configured manually in config/access.toml.

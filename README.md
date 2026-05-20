@@ -295,6 +295,7 @@ Example flow on Linux:
 
 1. copy the repo to a stable path such as `/opt/llm-scheduling-management-system`
 2. prepare `.env` and local `config/*.toml`
+   - if you want to protect `/console`, `/docs`, and the API, also create `config/access.toml`
 3. run `uv sync`
 4. run `uv run alembic upgrade head`
 5. copy:
@@ -373,6 +374,7 @@ By default, it writes a JSON bundle under `artifacts/`.
 
 Runtime config prefers local files first:
 
+- `config/access.toml`
 - `config/search.toml`
 - `config/llm.toml`
 - `config/source_registry.toml`
@@ -381,6 +383,7 @@ Runtime config prefers local files first:
 
 If a local file is missing, the system falls back to:
 
+- `config/access.example.toml`
 - `config/search.example.toml`
 - `config/llm.example.toml`
 - `config/source_registry.example.toml`
@@ -391,6 +394,40 @@ Additional checked-in example files document the wider operational shape of the 
 - `config/app.example.toml`
 - `config/observability.example.toml`
 - `config/storage.example.toml`
+
+### Manual-Only Access Control
+
+HTTP access control is configured through:
+
+- `config/access.toml`
+
+This file is intentionally manual-only:
+
+- it is not exposed through `/api/v1/config/*`
+- it is not writable from the console
+- it should be kept local and out of git
+
+Example:
+
+```toml
+enabled = true
+password_header_name = "X-LSMS-Password"
+basic_auth_realm = "llm-scheduling-management-system"
+
+[[credentials]]
+user = "admin"
+password = "replace-with-a-strong-password"
+
+[[credentials]]
+user = "operator"
+password = "replace-with-another-strong-password"
+```
+
+When access control is enabled:
+
+- browser access to `/console`, `/docs`, and `/redoc` uses HTTP Basic Auth
+- script and service calls can send the configured password in the `X-LSMS-Password` header
+- every authenticated request is logged with the mapped configured user
 
 At the moment, the runtime directly loads search, LLM, source registry, MCP, and environment settings. The extra example files are still useful as deployment-oriented templates and future extension points.
 
@@ -470,6 +507,8 @@ The local console is served at:
 /console
 ```
 
+If `config/access.toml` has `enabled = true`, the console page is protected by the same password check as the API. Browser visits will receive an HTTP Basic Auth prompt.
+
 It includes:
 
 - system overview
@@ -504,6 +543,8 @@ Health and utility endpoints:
 
 - `GET /healthz`
 - `GET /api/v1/system/status`
+
+If access control is enabled, these endpoints also require a valid password.
 
 Main task endpoints:
 
