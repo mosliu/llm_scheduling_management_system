@@ -165,6 +165,8 @@ def test_list_tasks_supports_filters(client):
 
     assert all_tasks
     assert all_tasks[0]["created_at"] >= all_tasks[-1]["created_at"]
+    assert all_tasks[0]["input_payload"]["topic"] == "list two"
+    assert all_tasks[0]["options_payload"] == {}
     assert all(item["status"] == "cancelled" for item in cancelled_tasks)
     assert all(item["template_id"] == "event_summary_v1" for item in summary_tasks)
 

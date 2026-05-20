@@ -10,6 +10,7 @@ class AccessConfig(BaseModel):
     enabled: bool = False
     password_header_name: str = "X-LSMS-Password"
     basic_auth_realm: str = "llm-scheduling-management-system"
+    session_cookie_name: str = "lsms_access_session"
     credentials: list[AccessCredentialConfig] = Field(default_factory=list)
 
 

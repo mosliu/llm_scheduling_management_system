@@ -5,6 +5,7 @@
 enabled = false
 password_header_name = "X-LSMS-Password"
 basic_auth_realm = "llm-scheduling-management-system"
+session_cookie_name = "lsms_access_session"
 
 [[credentials]]
 user = "admin"

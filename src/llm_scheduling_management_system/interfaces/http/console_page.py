@@ -237,6 +237,24 @@ HTML = r"""
       box-shadow: inset 0 0 0 1px rgba(0,113,227,.16), 0 14px 28px rgba(0,113,227,.08);
     }
     .task-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .task-meta {
+      margin-top: 8px;
+      display: grid;
+      gap: 3px;
+    }
+    .task-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .task-value {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--ink);
+      word-break: break-word;
+    }
     .pill {
       display: inline-block;
       padding: 5px 9px;
@@ -623,6 +641,92 @@ HTML = r"""
       return JSON.stringify(value, null, 2);
     }
 
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char]));
+    }
+
+    function formatDateTime(value) {
+      if (!value) return 'unknown';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function toInlineText(value) {
+      if (value === null || value === undefined || value === '') return '';
+      if (Array.isArray(value)) return value.join(', ');
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
+
+    function summarizeTimeRange(timeRange) {
+      if (!timeRange || typeof timeRange !== 'object') return '';
+      const start = timeRange.start || '';
+      const end = timeRange.end || '';
+      if (start && end) return `${start} -> ${end}`;
+      return start || end || '';
+    }
+
+    function summarizeTaskDescription(task) {
+      const input = task.input_payload || {};
+      const primary = [input.topic, input.description, input.prompt, input.query]
+        .find(value => typeof value === 'string' && value.trim());
+      if (primary) return primary.trim();
+
+      const entries = Object.entries(input).filter(([key, value]) => key !== 'time_range' && toInlineText(value));
+      if (!entries.length) {
+        const timeRange = summarizeTimeRange(input.time_range);
+        return timeRange ? `Time window ${timeRange}` : 'No description provided.';
+      }
+
+      return entries
+        .slice(0, 3)
+        .map(([key, value]) => `${key}: ${toInlineText(value)}`)
+        .join(' · ');
+    }
+
+    function summarizeTaskRequirements(task) {
+      const input = task.input_payload || {};
+      const options = task.options_payload || {};
+      const parts = [];
+      const timeRange = summarizeTimeRange(input.time_range);
+      if (timeRange) parts.push(`window ${timeRange}`);
+      if (Array.isArray(options.search_provider_names) && options.search_provider_names.length) {
+        parts.push(`search ${options.search_provider_names.join(', ')}`);
+      }
+      if (options.search_limit) parts.push(`limit ${options.search_limit}`);
+      if (options.fetch_provider_name) parts.push(`fetch ${options.fetch_provider_name}`);
+      if (options.llm_profile_name) parts.push(`llm ${options.llm_profile_name}`);
+      if (options.execution_engine) parts.push(`engine ${options.execution_engine}`);
+      if (options.disable_cache === true) parts.push('cache disabled');
+
+      const covered = new Set([
+        'search_provider_names',
+        'search_limit',
+        'fetch_provider_name',
+        'llm_profile_name',
+        'execution_engine',
+        'disable_cache',
+      ]);
+      const extraEntries = Object.entries(options).filter(([key, value]) => !covered.has(key) && toInlineText(value));
+      if (extraEntries.length) {
+        parts.push(
+          extraEntries
+            .slice(0, 3)
+            .map(([key, value]) => `${key}: ${toInlineText(value)}`)
+            .join(' · ')
+        );
+      }
+
+      return parts.length ? parts.join(' · ') : 'Default execution settings.';
+    }
+
     async function api(url, options) {
       const response = await fetch(url, options);
       if (!response.ok) {
@@ -777,13 +881,28 @@ HTML = r"""
         const card = document.createElement('div');
         card.className = 'task-card' + (state.selectedTaskId === item.task_id ? ' active' : '');
         card.onclick = () => selectTask(item.task_id);
+        const createdAt = escapeHtml(formatDateTime(item.created_at));
+        const description = escapeHtml(summarizeTaskDescription(item));
+        const requirements = escapeHtml(summarizeTaskRequirements(item));
         card.innerHTML = `
           <div class="task-head">
-            <strong>${item.task_id}</strong>
-            <span class="pill">${item.status}</span>
+            <strong>${escapeHtml(item.task_id)}</strong>
+            <span class="pill">${escapeHtml(item.status)}</span>
           </div>
-          <div class="muted">${item.template_id}</div>
+          <div class="muted">${escapeHtml(item.template_id)}</div>
           <div class="muted">Progress ${item.progress}% · ${item.completed_step_count}/${item.planned_step_count}</div>
+          <div class="task-meta">
+            <div class="task-label">Started</div>
+            <div class="task-value">${createdAt}</div>
+          </div>
+          <div class="task-meta">
+            <div class="task-label">Description</div>
+            <div class="task-value">${description}</div>
+          </div>
+          <div class="task-meta">
+            <div class="task-label">Requirements</div>
+            <div class="task-value">${requirements}</div>
+          </div>
         `;
         container.appendChild(card);
       }

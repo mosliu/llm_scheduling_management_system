@@ -40,6 +40,8 @@ def map_task_summary(task: TaskRun) -> TaskSummaryResponse:
         template_id=task.template_id,
         template_version=task.template_version,
         status=task.status,
+        input_payload=task.input_payload,
+        options_payload=task.options_payload,
         progress=task.progress_percent,
         planned_step_count=task.planned_step_count,
         completed_step_count=task.completed_step_count,

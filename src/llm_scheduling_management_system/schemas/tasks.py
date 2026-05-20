@@ -69,6 +69,8 @@ class TaskSummaryResponse(BaseModel):
     template_id: str
     template_version: str
     status: str
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    options_payload: dict[str, Any] = Field(default_factory=dict)
     progress: float
     planned_step_count: int
     completed_step_count: int
