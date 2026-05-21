@@ -46,6 +46,33 @@ class BaseConfiguredLLMProvider(LLMProvider):
 
 
 class OpenAIProvider(BaseConfiguredLLMProvider):
+    @staticmethod
+    def _extract_choice_text(choice: dict) -> str:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                text_parts: list[str] = []
+                for item in content:
+                    if isinstance(item, dict) and isinstance(item.get("text"), str):
+                        text_parts.append(item["text"])
+                return "".join(text_parts)
+
+        delta = choice.get("delta") if isinstance(choice, dict) else None
+        if isinstance(delta, dict):
+            content = delta.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                text_parts: list[str] = []
+                for item in content:
+                    if isinstance(item, dict) and isinstance(item.get("text"), str):
+                        text_parts.append(item["text"])
+                return "".join(text_parts)
+        return ""
+
     def build_request(self, prompt: str) -> ProviderRequest:
         api_mode = self.profile.default_options.get("api_mode", "responses")
         if api_mode == "chat_completions":
@@ -80,6 +107,7 @@ class OpenAIProvider(BaseConfiguredLLMProvider):
     def parse_response_text(self, response_payload) -> str:
         if isinstance(response_payload, str):
             lines = [line.strip() for line in response_payload.splitlines() if line.strip().startswith("data:")]
+            streamed_parts: list[str] = []
             for line in lines:
                 payload = line[len("data:"):].strip()
                 if payload == "[DONE]":
@@ -88,13 +116,21 @@ class OpenAIProvider(BaseConfiguredLLMProvider):
                     parsed = json.loads(payload)
                     choices = parsed.get("choices")
                     if choices:
-                        return choices[0]["message"]["content"]
+                        for choice in choices:
+                            choice_text = self._extract_choice_text(choice)
+                            if choice_text:
+                                streamed_parts.append(choice_text)
                 except Exception:
                     continue
+            if streamed_parts:
+                return "".join(streamed_parts)
         choices = response_payload.get("choices") if isinstance(response_payload, dict) else None
         if choices:
             try:
-                return choices[0]["message"]["content"]
+                collected = [self._extract_choice_text(choice) for choice in choices]
+                text = "".join(part for part in collected if part)
+                if text:
+                    return text
             except Exception:
                 pass
         output = response_payload.get("output", []) if isinstance(response_payload, dict) else []

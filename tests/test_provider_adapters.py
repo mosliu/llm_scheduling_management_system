@@ -213,6 +213,32 @@ def test_openai_chat_completions_request_includes_profile_runtime_parameters():
     assert request.json_body["max_tokens"] == 8000
 
 
+def test_openai_chat_completions_request_allows_stream_override():
+    openai_provider = LLMProviderConfig(
+        name="openai_primary",
+        provider_type="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        simulate=True,
+    )
+    openai_profile = LLMProfileConfig(
+        name="advanced_reasoning_cn",
+        provider="openai_primary",
+        model="gpt-5.4",
+        temperature=0.2,
+        max_tokens=8000,
+        structured_output=False,
+        fallback_profiles=[],
+        default_options={"api_mode": "chat_completions", "stream": True},
+    )
+
+    openai = OpenAIProvider(openai_provider, openai_profile)
+    request = openai.build_request("hello")
+
+    assert request.json_body["stream"] is True
+
+
 def test_openai_generate_captures_raw_http_exchange(monkeypatch):
     openai_provider = LLMProviderConfig(
         name="openai_primary",
@@ -265,6 +291,39 @@ def test_openai_generate_captures_raw_http_exchange(monkeypatch):
     assert openai.last_request_snapshot["headers"]["Authorization"] == "***redacted***"
     assert openai.last_response_snapshot["status_code"] == 504
     assert "openai_error" in openai.last_response_snapshot["body_text"]
+
+
+def test_openai_parse_response_text_supports_streaming_chat_completions_sse():
+    provider = LLMProviderConfig(
+        name="openai_primary",
+        provider_type="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        simulate=True,
+    )
+    profile = LLMProfileConfig(
+        name="advanced_reasoning_cn",
+        provider="openai_primary",
+        model="gpt-5.4",
+        temperature=0.2,
+        max_tokens=8000,
+        structured_output=False,
+        fallback_profiles=[],
+        default_options={"api_mode": "chat_completions", "stream": True},
+    )
+    openai = OpenAIProvider(provider, profile)
+
+    payload = "\n".join(
+        [
+            'data: {"choices":[{"delta":{"role":"assistant","content":"Hello"}}]}',
+            'data: {"choices":[{"delta":{"content":" world"}}]}',
+            'data: {"choices":[{"finish_reason":"stop"}]}',
+            'data: [DONE]',
+        ]
+    )
+
+    assert openai.parse_response_text(payload) == "Hello world"
 
 
 def test_anthropic_request_can_carry_web_search_options():
