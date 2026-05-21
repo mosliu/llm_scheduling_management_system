@@ -36,6 +36,16 @@ DEFAULT_WEB_RESEARCH_USER_PROMPT_TEMPLATE = (
 
 
 def _extract_domain(url: str | None) -> str:
+    """提取 URL 中的域名。
+
+    用途:
+        从给定的 URL 字符串中解析并返回主机域名 (netloc)，如果解析失败或 URL 为空，则返回 'unknown'。
+
+    用法:
+        domain = _extract_domain("https://example.com/path")
+
+    @Author: mosliu
+    """
     if not url:
         return "unknown"
     try:
@@ -45,6 +55,16 @@ def _extract_domain(url: str | None) -> str:
 
 
 def _render_prompt_template(template: str, *, query: str, limit: int) -> str:
+    """渲染搜索提示词模板。
+
+    用途:
+        使用搜索查询词、数量限制和 JSON 结构定义填充提示词模板。如果填充失败，则返回原模板。
+
+    用法:
+        prompt = _render_prompt_template(template, query="python", limit=5)
+
+    @Author: mosliu
+    """
     try:
         return template.format(query=query, limit=limit, schema=SEARCH_RESULT_JSON_SHAPE)
     except Exception:
@@ -52,6 +72,16 @@ def _render_prompt_template(template: str, *, query: str, limit: int) -> str:
 
 
 def _extract_text_payload(response_payload) -> str:
+    """提取响应体中的文本内容。
+
+    用途:
+        从 LLM 服务返回的非结构化或流式（SSE）响应（如 OpenAI/Grok 格式的 choices 列表或 output 列表）中提取纯文本正文。
+
+    用法:
+        text = _extract_text_payload(response_payload)
+
+    @Author: mosliu
+    """
     if isinstance(response_payload, str):
         stripped = response_payload.strip()
         if stripped.startswith("data:"):
@@ -109,6 +139,16 @@ def _parse_search_results_text(
     limit: int,
     default_source_type: str,
 ) -> list[SearchHit]:
+    """解析搜索结果文本为 SearchHit 列表。
+
+    用途:
+        将包含 JSON 字符串的文本解析为标准 SearchHit 列表，支持清理 Markdown 代码块标记（如 ```json）并进行鲁棒的正则查找。
+
+    用法:
+        hits = _parse_search_results_text("grok", "query", response_text, limit=5, default_source_type="social")
+
+    @Author: mosliu
+    """
     parsed = {"results": []}
     if isinstance(response_text, str):
         stripped = response_text.strip()
@@ -149,17 +189,67 @@ def _parse_search_results_text(
 
 
 class BaseConfiguredSearchProvider(SearchProvider):
+    """基于配置的搜索服务提供商抽象类。
+
+    用途:
+        提供搜索请求构建、结果解析、模拟搜索执行的公共骨架实现，作为所有具体搜索提供商的基类。
+
+    用法:
+        继承自此类并实现 build_request 和 parse_response。
+
+    @Author: mosliu
+    """
     def __init__(self, config: SearchProviderConfig) -> None:
+        """初始化基础搜索服务提供商。
+
+        用途:
+            存储提供商配置并初始化用于发送请求的 HTTP 客户端。
+
+        用法:
+            provider = BaseConfiguredSearchProvider(config)
+
+        @Author: mosliu
+        """
         self.config = config
         self.http_client = HTTPProviderClient(config.base_url, config.timeout_seconds)
 
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建搜索请求。
+
+        用途:
+            根据搜索词及数量限制构造 ProviderRequest 对象。子类必须实现此方法。
+
+        用法:
+            request = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         raise NotImplementedError
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析搜索响应。
+
+        用途:
+            解析 API 响应载荷为结构化的 SearchResultBundle。子类必须实现此方法。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload, limit=5)
+
+        @Author: mosliu
+        """
         raise NotImplementedError
 
     def _simulate_search(self, query: str, *, limit: int, request: ProviderRequest) -> SearchResultBundle:
+        """执行模拟搜索。
+
+        用途:
+            在模拟模式下，根据输入的查询词和限制，构造并返回一个虚构的 SearchResultBundle，不发出实际网络请求。
+
+        用法:
+            bundle = provider._simulate_search("query", limit=5, request=request)
+
+        @Author: mosliu
+        """
         hits = [
             SearchHit(
                 provider=self.config.name,
@@ -194,6 +284,16 @@ class BaseConfiguredSearchProvider(SearchProvider):
         )
 
     def search(self, query: str, *, limit: int = 10) -> SearchResultBundle:
+        """执行实际搜索或模拟搜索。
+
+        用途:
+            如果配置了 simulate 模式则执行模拟搜索，否则构建并发送 HTTP 请求，最后将响应解析为 SearchResultBundle 并附带元数据。
+
+        用法:
+            bundle = provider.search("python", limit=5)
+
+        @Author: mosliu
+        """
         request = self.build_request(query, limit=limit)
         if self.config.simulate:
             return self._simulate_search(query, limit=limit, request=request)
@@ -215,7 +315,28 @@ class BaseConfiguredSearchProvider(SearchProvider):
 
 
 class ExaSearchProvider(BaseConfiguredSearchProvider):
+    """Exa 搜索服务提供商适配器。
+
+    用途:
+        对接 Exa.ai 的原生搜索 API。
+
+    用法:
+        provider = ExaSearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 Exa 搜索请求。
+
+        用途:
+            构造指向 Exa 搜索 API 的 POST 请求及头部和载荷。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         return ProviderRequest(
             method="POST",
             url=self.http_client.build_url("/search"),
@@ -224,6 +345,16 @@ class ExaSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 Exa 搜索响应。
+
+        用途:
+            将 Exa 返回的 JSON 格式搜索结果映射为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         results = response_payload.get("results", []) if isinstance(response_payload, dict) else []
         hits = [
             SearchHit(
@@ -243,7 +374,28 @@ class ExaSearchProvider(BaseConfiguredSearchProvider):
 
 
 class TavilySearchProvider(BaseConfiguredSearchProvider):
+    """Tavily 搜索服务提供商适配器。
+
+    用途:
+        对接 Tavily 搜索 API。
+
+    用法:
+        provider = TavilySearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 Tavily 搜索请求。
+
+        用途:
+            构造指向 Tavily 搜索 API 的 POST 请求及头部和载荷。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         json_body = {
             **self.config.default_options,
             "query": query,
@@ -257,6 +409,16 @@ class TavilySearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 Tavily 搜索响应。
+
+        用途:
+            将 Tavily 返回的 JSON 格式搜索结果映射为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         results = response_payload.get("results", []) if isinstance(response_payload, dict) else []
         hits = [
             SearchHit(
@@ -275,7 +437,28 @@ class TavilySearchProvider(BaseConfiguredSearchProvider):
 
 
 class FirecrawlSearchProvider(BaseConfiguredSearchProvider):
+    """Firecrawl 搜索服务提供商适配器。
+
+    用途:
+        对接 Firecrawl.dev 的 v2 搜索 API。
+
+    用法:
+        provider = FirecrawlSearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 Firecrawl 搜索请求。
+
+        用途:
+            构造指向 Firecrawl 搜索 API 的 POST 请求。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         return ProviderRequest(
             method="POST",
             url=self.http_client.build_url("/v2/search"),
@@ -284,6 +467,16 @@ class FirecrawlSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 Firecrawl 搜索响应。
+
+        用途:
+            将 Firecrawl 返回的 JSON 数据映射为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         web_results = response_payload.get("data", {}).get("web", []) if isinstance(response_payload, dict) else []
         hits = [
             SearchHit(
@@ -302,7 +495,28 @@ class FirecrawlSearchProvider(BaseConfiguredSearchProvider):
 
 
 class TinyFishSearchProvider(BaseConfiguredSearchProvider):
+    """TinyFish 搜索服务提供商适配器。
+
+    用途:
+        对接 TinyFish 搜索 API。
+
+    用法:
+        provider = TinyFishSearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 TinyFish 搜索请求。
+
+        用途:
+            构造指向 TinyFish API 的 GET 请求，包含 URL 参数。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         return ProviderRequest(
             method="GET",
             url=self.http_client.build_url("/"),
@@ -311,6 +525,16 @@ class TinyFishSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 TinyFish 搜索响应。
+
+        用途:
+            将 TinyFish 响应数据映射为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         results = response_payload.get("results", []) if isinstance(response_payload, dict) else []
         hits = [
             SearchHit(
@@ -329,7 +553,28 @@ class TinyFishSearchProvider(BaseConfiguredSearchProvider):
 
 
 class GrokSearchProvider(BaseConfiguredSearchProvider):
+    """Grok 搜索服务提供商适配器。
+
+    用途:
+        对接 Grok 大模型及其自带的 web_search 工具进行网络检索。
+
+    用法:
+        provider = GrokSearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 Grok 大模型及搜索工具调用请求。
+
+        用途:
+            构造发送给 Grok 聊天补全接口的 POST 请求，启用 web_search 工具并附带系统及用户提示词。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         system_prompt = self.config.default_options.get("system", DEFAULT_WEB_RESEARCH_SYSTEM_PROMPT)
         user_prompt_template = self.config.default_options.get(
             "user_prompt_template",
@@ -361,6 +606,16 @@ class GrokSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 Grok 大模型搜索响应。
+
+        用途:
+            解析 Grok 的模型响应文本，并使用 _parse_search_results_text 还原为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         hits = _parse_search_results_text(
             self.config.name,
             query,
@@ -372,7 +627,28 @@ class GrokSearchProvider(BaseConfiguredSearchProvider):
 
 
 class OpenAIWebSearchProvider(BaseConfiguredSearchProvider):
+    """OpenAI 风格的 LLM web_search 提供商适配器。
+
+    用途:
+        对接兼容 OpenAI 接口规范的大模型搜索扩展（如启用 web_search 的模型），通过提示词和内置工具获取搜索结果。
+
+    用法:
+        provider = OpenAIWebSearchProvider(config)
+        bundle = provider.search("query")
+
+    @Author: mosliu
+    """
     def build_request(self, query: str, *, limit: int = 10) -> ProviderRequest:
+        """构建 OpenAI 风格大模型搜索请求。
+
+        用途:
+            根据配置的 api_mode，构造 /chat/completions 或 /responses 的 POST 请求。
+
+        用法:
+            req = provider.build_request("query", limit=5)
+
+        @Author: mosliu
+        """
         api_mode = self.config.default_options.get("api_mode", "responses")
         system_prompt = self.config.default_options.get("system", DEFAULT_WEB_RESEARCH_SYSTEM_PROMPT)
         user_prompt_template = self.config.default_options.get(
@@ -444,6 +720,16 @@ class OpenAIWebSearchProvider(BaseConfiguredSearchProvider):
         )
 
     def parse_response(self, query: str, response_payload, *, limit: int = 10) -> SearchResultBundle:
+        """解析 OpenAI 风格大模型搜索响应。
+
+        用途:
+            解析 OpenAI 格式模型返回的文本段并还原为 SearchResultBundle。
+
+        用法:
+            bundle = provider.parse_response("query", response_payload)
+
+        @Author: mosliu
+        """
         hits = _parse_search_results_text(
             self.config.name,
             query,

@@ -37,6 +37,16 @@ def get_step(
     step_run_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> StepDetailResponse:
+    """获取指定步骤的详细运行信息。
+
+    用途:
+        查询特定步骤运行记录（StepRun）的各种元数据和执行结果。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -52,6 +62,17 @@ def derive_task_from_step(
     request: CreateDerivedTaskRequest,
     service: TaskService = Depends(get_task_service),
 ) -> CreateTaskResponse:
+    """从已执行的步骤生成/衍生出新的任务。
+
+    用途:
+        将某一步骤的生成物作为输入，触发并创建一个新的任务工作流。
+
+    用法:
+        POST /api/v1/steps/{step_run_id}/derive-task
+        Body: CreateDerivedTaskRequest
+
+    @Author: mosliu
+    """
     try:
         task = service.create_task_from_step(step_run_id, request)
     except StepHasNoArtifactsError as exc:
@@ -84,6 +105,16 @@ def get_artifact(
     artifact_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> ArtifactDetailResponse:
+    """获取指定生成物的详细信息。
+
+    用途:
+        查询并获取任务执行过程中产生的特定生成物（Artifact）的内容与元数据。
+
+    用法:
+        GET /api/v1/artifacts/{artifact_id}
+
+    @Author: mosliu
+    """
     artifact = service.get_artifact(artifact_id)
     if artifact is None:
         raise HTTPException(
@@ -98,6 +129,16 @@ def get_artifact_lineage(
     artifact_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[ArtifactLineageEdgeResponse]:
+    """查询指定生成物的血缘关系链。
+
+    用途:
+        获取当前生成物与其上下游生成物之间的依赖关系（边列表）。
+
+    用法:
+        GET /api/v1/artifacts/{artifact_id}/lineage
+
+    @Author: mosliu
+    """
     artifact = service.get_artifact(artifact_id)
     if artifact is None:
         raise HTTPException(
@@ -112,6 +153,16 @@ def get_checkpoint(
     checkpoint_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> CheckpointDetailResponse:
+    """获取指定检查点的详细信息。
+
+    用途:
+        查询工作流执行过程中的某一个状态检查点（Checkpoint）及其关联数据。
+
+    用法:
+        GET /api/v1/checkpoints/{checkpoint_id}
+
+    @Author: mosliu
+    """
     checkpoint = service.get_checkpoint(checkpoint_id)
     if checkpoint is None:
         raise HTTPException(
@@ -126,6 +177,16 @@ def get_step_search_invocations(
     step_run_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[SearchInvocationResponse]:
+    """获取指定步骤执行期间的搜索接口调用记录。
+
+    用途:
+        追踪和审计该步骤内进行过的所有网络搜索（Search）调用请求与响应。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/search-invocations
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -140,6 +201,16 @@ def get_step_fetch_invocations(
     step_run_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[FetchInvocationResponse]:
+    """获取指定步骤执行期间的内容抓取接口调用记录。
+
+    用途:
+        追踪和审计该步骤内进行过的网页抓取/提取（Fetch）调用情况。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/fetch-invocations
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -160,6 +231,16 @@ def get_step_documents(
     published_before: str | None = Query(default=None),
     service: TaskService = Depends(get_task_service),
 ) -> list[DocumentResponse]:
+    """获取指定步骤获取到的所有文档记录。
+
+    用途:
+        查询某一步骤执行中拉取到的网页正文或文档列表，并支持多维度过滤。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/documents
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -185,6 +266,16 @@ def get_step_llm_invocations(
     step_run_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[LLMInvocationResponse]:
+    """获取指定步骤执行期间的大模型（LLM）调用记录。
+
+    用途:
+        追踪、调试和审计该步骤内进行过的所有大语言模型调用细节（提示词、回复、耗时等）。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/llm-invocations
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -199,6 +290,16 @@ def get_step_tool_invocations(
     step_run_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[ToolInvocationResponse]:
+    """获取指定步骤执行期间的 MCP 工具调用记录。
+
+    用途:
+        追踪和审计该步骤内运行过的所有外部 Model Context Protocol (MCP) 工具的请求和返回信息。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/tool-invocations
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(
@@ -218,6 +319,16 @@ def get_step_search_hits(
     published_before: str | None = Query(default=None),
     service: TaskService = Depends(get_task_service),
 ) -> list[SearchHitResponse]:
+    """获取指定步骤执行期间的搜索命中条目。
+
+    用途:
+        获取某步骤通过搜索引擎检索到的命中网页摘要信息，并支持过滤。
+
+    用法:
+        GET /api/v1/steps/{step_run_id}/search-hits
+
+    @Author: mosliu
+    """
     step = service.get_step(step_run_id)
     if step is None:
         raise HTTPException(

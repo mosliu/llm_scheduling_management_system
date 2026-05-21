@@ -10,10 +10,43 @@ from llm_scheduling_management_system.mcp.types import MCPToolCallResult
 
 
 class MCPClient:
+    """MCP 客户端类。
+
+    用途:
+        建立与特定 MCP 服务器的通信，并执行特定的工具。支持 http 和 stdio 传输机制，并支持模拟（Simulation）运行。
+
+    用法:
+        config = MCPServerConfig(...)
+        client = MCPClient(config)
+        result = client.call_tool("fetch_url", {"url": "http://example.com"})
+
+    @Author: mosliu
+    """
+
     def __init__(self, config: MCPServerConfig) -> None:
+        """初始化 MCPClient 实例。
+
+        用途:
+            利用传入的服务器配置（MCPServerConfig）进行初始化。
+
+        用法:
+            client = MCPClient(config)
+
+        @Author: mosliu
+        """
         self.config = config
 
     def call_tool(self, tool_name: str, arguments: dict) -> MCPToolCallResult:
+        """调用服务器上的指定工具。
+
+        用途:
+            根据配置的传输协议（HTTP/STDIO/SIMULATE），将参数序列化并发送至 MCP 服务器端以执行指定工具，并解析返回结果。
+
+        用法:
+            result = client.call_tool("calculate", {"expression": "1 + 1"})
+
+        @Author: mosliu
+        """
         if self.config.simulate:
             return MCPToolCallResult(
                 server_name=self.config.name,

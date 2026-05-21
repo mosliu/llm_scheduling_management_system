@@ -13,6 +13,16 @@ router = APIRouter(prefix="/api/v1/workflow-templates", tags=["workflow-template
 def list_workflow_templates(
     service: TaskService = Depends(get_task_service),
 ) -> list[WorkflowTemplateResponse]:
+    """获取所有可用工作流模板的列表。
+
+    用途:
+        查询系统中所有已注册的工作流模板。
+
+    用法:
+        GET /api/v1/workflow-templates
+
+    @Author: mosliu
+    """
     templates = service.list_templates()
     return [map_template(template) for template in templates]
 
@@ -22,6 +32,16 @@ def get_workflow_template(
     template_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> WorkflowTemplateDetailResponse:
+    """获取指定工作流模板的详细信息与蓝图步骤。
+
+    用途:
+        查询特定工作流模板的详细配置和所包含的步骤。
+
+    用法:
+        GET /api/v1/workflow-templates/{template_id}
+
+    @Author: mosliu
+    """
     template, blueprint = service.get_template_with_blueprint(template_id)
     if template is None:
         raise HTTPException(

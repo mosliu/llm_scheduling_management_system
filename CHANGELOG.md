@@ -9,6 +9,7 @@
 - Added persistent recording of raw LLM HTTP request and response snapshots in LLM invocation metadata.
 - Added task execution documentation for the Liuzhou earthquake workflow run.
 - Added a Markdown export of the generated Liuzhou earthquake report.
+- Added broad Chinese docstrings and inline documentation across core services, providers, models, and HTTP routes to improve maintainability.
 
 ### Changed
 

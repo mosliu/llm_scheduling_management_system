@@ -11,14 +11,44 @@ from llm_scheduling_management_system.domain.enums import ArtifactLevel, StepSta
 
 
 def utcnow() -> datetime:
+    """获取当前的 UTC 时间。
+
+    用途:
+        生成带有时区感知（timezone-aware）的当前 UTC 时间。
+
+    用法:
+        current_time = utcnow()
+
+    @Author: mosliu
+    """
     return datetime.now(timezone.utc)
 
 
 def generate_prefixed_id(prefix: str) -> str:
+    """生成带有指定前缀的唯一标识符。
+
+    用途:
+        拼接传入的前缀与 uuid4 的前 24 个十六进制字符，用于各类实体的主键。
+
+    用法:
+        new_id = generate_prefixed_id("run")
+
+    @Author: mosliu
+    """
     return f"{prefix}_{uuid4().hex[:24]}"
 
 
 class WorkflowTemplate(Base):
+    """工作流模板数据库模型实体。
+
+    用途:
+        存储预定义的工作流模板元数据，包括名称、描述、分类、最新版本及状态等。
+
+    用法:
+        用于声明不同的工作流，关联具体执行的任务实例 TaskRun。
+
+    @Author: mosliu
+    """
     __tablename__ = "workflow_templates"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -34,6 +64,16 @@ class WorkflowTemplate(Base):
 
 
 class TaskRun(Base):
+    """任务运行实例数据库模型实体。
+
+    用途:
+        保存单次任务工作流的执行实例状态、输入、选项配置、进度以及在失败时恢复所必需的关联指针（如断点 ID、生成物 ID 等）。
+
+    用法:
+        管理并在各个步骤执行器中读写具体的任务执行状态。
+
+    @Author: mosliu
+    """
     __tablename__ = "task_runs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("run"))
@@ -63,6 +103,16 @@ class TaskRun(Base):
 
 
 class StepRun(Base):
+    """步骤运行数据库模型实体。
+
+    用途:
+        保存属于某一个 TaskRun 下的单个步骤节点的运行状态、重试次数、输入快照、输出总结、缓存状态、耗时及出错信息等。
+
+    用法:
+        在工作流运行时，用以跟踪各步骤节点具体的状态变更。
+
+    @Author: mosliu
+    """
     __tablename__ = "step_runs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("step"))
@@ -94,6 +144,16 @@ class StepRun(Base):
 
 
 class Artifact(Base):
+    """生成物（Artifact）数据库模型实体。
+
+    用途:
+        持久化存储工作流步骤节点生成出的各种格式的结构化数据、文本、大型 BLOB 的 URI、哈希值以及其 TTL 过期时间等。
+
+    用法:
+        提供工作流内部状态复用或下一步骤节点的输入，亦可用于审计和对外呈现。
+
+    @Author: mosliu
+    """
     __tablename__ = "artifacts"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("art"))
@@ -118,6 +178,16 @@ class Artifact(Base):
 
 
 class ArtifactLineage(Base):
+    """生成物血缘关系数据库模型实体。
+
+    用途:
+        保存生成物之间的衍生关系（Lineage），记录哪些生成物是由哪些父生成物经过步骤转换或聚合生成的。
+
+    用法:
+        提供工作流生成物的来源回溯审计与图关系渲染。
+
+    @Author: mosliu
+    """
     __tablename__ = "artifact_lineage"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("lin"))
@@ -128,6 +198,16 @@ class ArtifactLineage(Base):
 
 
 class SearchInvocation(Base):
+    """搜索调用审计数据库模型实体。
+
+    用途:
+        记录在特定步骤中，调用特定搜索服务提供商时的输入关键词、调用结果数量以及请求与响应元数据，用于计费、追踪与监控。
+
+    用法:
+        在调用 Search Provider API 成功或失败后插入记录。
+
+    @Author: mosliu
+    """
     __tablename__ = "search_invocations"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("sinv"))
@@ -143,6 +223,16 @@ class SearchInvocation(Base):
 
 
 class FetchInvocation(Base):
+    """内容提取（Fetch）调用审计数据库模型实体。
+
+    用途:
+        记录在特定步骤中，调用网页提取服务时的 URL、页面标题、请求和响应元数据。
+
+    用法:
+        在调用 Fetch/Crawl Provider API 时插入，审计网页数据提取历史。
+
+    @Author: mosliu
+    """
     __tablename__ = "fetch_invocations"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("finv"))
@@ -158,6 +248,16 @@ class FetchInvocation(Base):
 
 
 class LLMInvocation(Base):
+    """LLM 调用审计数据库模型实体。
+
+    用途:
+        记录在特定步骤中，调用大模型时的 Prompt 内容、模型生成的 Response 内容，以及包含 Token 消耗、耗时等详细元数据。
+
+    用法:
+        在使用大模型接口返回数据后写入，用于模型调试、审计以及 Token 使用监控。
+
+    @Author: mosliu
+    """
     __tablename__ = "llm_invocations"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("linv"))
@@ -175,6 +275,16 @@ class LLMInvocation(Base):
 
 
 class TaskEvent(Base):
+    """任务事件日志数据库模型实体。
+
+    用途:
+        记录任务执行生命周期中的关键事件节点（如任务入队、任务启动、任务重试、步骤完成等），提供结构化的事件负载。
+
+    用法:
+        提供工作流系统向外通知、事件溯源或在控制台上渲染任务进度树的数据基础。
+
+    @Author: mosliu
+    """
     __tablename__ = "task_events"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("tev"))
@@ -187,6 +297,16 @@ class TaskEvent(Base):
 
 
 class ToolInvocation(Base):
+    """MCP 外部工具调用审计数据库模型实体。
+
+    用途:
+        记录向 MCP 服务端发起的各个 Tool 调用的名称、参数、返回值及调用状态。
+
+    用法:
+        当 LLM 或步骤节点触发 MCP 工具调用时，写入相关记录供追溯审计。
+
+    @Author: mosliu
+    """
     __tablename__ = "tool_invocations"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("tinv"))
@@ -201,6 +321,16 @@ class ToolInvocation(Base):
 
 
 class SearchHitRecord(Base):
+    """单条搜索结果记录（Hit）数据库模型实体。
+
+    用途:
+        持久化存储搜索出来的具体网页标题、域名、网页摘要（snippet）、发布时间以及所属搜索服务商与源类型。
+
+    用法:
+        在执行搜索步骤时产生，作为后续内容提取（Fetch）或总结（Summary）的数据源。
+
+    @Author: mosliu
+    """
     __tablename__ = "search_hits"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("shit"))
@@ -220,6 +350,16 @@ class SearchHitRecord(Base):
 
 
 class DocumentRecord(Base):
+    """已提取文档数据库模型实体。
+
+    用途:
+        保存被下载、解析并清洗后的网页完整正文文本或文档，包含语言、作者、发布日期及来源域名分析。
+
+    用法:
+        作为后续长文本总结或知识检索（RAG）的输入源。
+
+    @Author: mosliu
+    """
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("doc"))
@@ -243,6 +383,16 @@ class DocumentRecord(Base):
 
 
 class Checkpoint(Base):
+    """运行检查点（断点）数据库模型实体。
+
+    用途:
+        保存步骤节点完成后的工作流快照状态以及关联的生成物，便于任务在此检查点处进行恢复/继续执行。
+
+    用法:
+        任务在每个步骤成功后持久化 Checkpoint 记录，在系统重启或失败恢复时，重构变量池状态。
+
+    @Author: mosliu
+    """
     __tablename__ = "checkpoints"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: generate_prefixed_id("cp"))

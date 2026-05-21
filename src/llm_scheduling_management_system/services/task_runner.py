@@ -12,22 +12,84 @@ from llm_scheduling_management_system.repositories.task_repository import TaskRe
 
 
 class TaskAlreadyCompletedError(Exception):
+    """任务已完成异常类。
+
+    用途:
+        当试图运行一个已经处于成功或结束状态的任务时抛出。
+
+    用法:
+        raise TaskAlreadyCompletedError("task_123")
+
+    @Author: mosliu
+    """
     pass
 
 
 class StepExecutionFailedError(Exception):
+    """步骤执行失败异常类。
+
+    用途:
+        在模拟执行步骤或由于特定配置强行让某个步骤执行失败时使用。
+
+    用法:
+        raise StepExecutionFailedError("step_1", "Simulated error")
+
+    @Author: mosliu
+    """
     def __init__(self, node_key: str, message: str) -> None:
+        """初始化 StepExecutionFailedError 实例。
+
+        用途:
+            绑定失败的节点 Key 及错误信息。
+
+        用法:
+            exc = StepExecutionFailedError("step_1", "Simulated error")
+
+        @Author: mosliu
+        """
         super().__init__(message)
         self.node_key = node_key
         self.message = message
 
 
 class TaskRunner:
+    """任务调度及执行控制服务。
+
+    用途:
+        负责驱动并按序执行任务下的所有步骤，处理输入 Artifact 的依赖注入、步骤级缓存（Cache Hits）、模拟执行失败与重试等核心控制流。
+
+    用法:
+        runner = TaskRunner(repository, registry)
+        updated_task = runner.run_task(task)
+
+    @Author: mosliu
+    """
+
     def __init__(self, repository: TaskRepository, registry: ExecutorRegistry | None = None) -> None:
+        """初始化 TaskRunner 实例。
+
+        用途:
+            注入底层的任务仓储 TaskRepository，以及执行器注册表 ExecutorRegistry。
+
+        用法:
+            runner = TaskRunner(repository, registry)
+
+        @Author: mosliu
+        """
         self.repository = repository
         self.registry = registry or ExecutorRegistry()
 
     def run_task(self, task: TaskRun) -> TaskRun:
+        """完整驱动执行任务的全部待处理步骤。
+
+        用途:
+            将任务状态更改为运行中，并依次提取、执行当前未完成的步骤，直到任务全部成功或遇到阻塞（如重试等待、步骤失败等）。
+
+        用法:
+            task = runner.run_task(task)
+
+        @Author: mosliu
+        """
         if task.status == TaskStatus.SUCCEEDED.value:
             raise TaskAlreadyCompletedError(task.id)
 
@@ -49,6 +111,16 @@ class TaskRunner:
         return self.repository.get_task(task.id) or task
 
     def run_next_step(self, task: TaskRun) -> TaskRun:
+        """仅向前驱动执行任务的下一个待处理步骤。
+
+        用途:
+            单步推进任务的调度。若存在待处理步骤，标记任务运行，执行单步并返回。
+
+        用法:
+            task = runner.run_next_step(task)
+
+        @Author: mosliu
+        """
         if task.status == TaskStatus.SUCCEEDED.value:
             raise TaskAlreadyCompletedError(task.id)
 
@@ -62,6 +134,16 @@ class TaskRunner:
         return self.repository.get_task(task.id) or task
 
     def run_specific_step(self, task: TaskRun, step) -> TaskRun:
+        """执行一个特定的步骤。
+
+        用途:
+            重置并加载特定的步骤及任务模型，通过内部单步方法驱动执行。
+
+        用法:
+            task = runner.run_specific_step(task, step)
+
+        @Author: mosliu
+        """
         step_state = sqlalchemy_inspect(step)
         step_identity = step_state.identity[0] if step_state.identity else getattr(step, "id", None)
         current_task = self.repository.get_task(task.id) or task
@@ -69,6 +151,16 @@ class TaskRunner:
         return self._run_single_step(current_task, current_step)
 
     def _get_pending_steps(self, task: TaskRun) -> list:
+        """获取任务当前的所有待处理步骤。
+
+        用途:
+            按 sequence_no 升序排序，筛选出所有状态为 PENDING 或 RETRYING 的步骤。
+
+        用法:
+            steps = runner._get_pending_steps(task)
+
+        @Author: mosliu
+        """
         return [
             step
             for step in sorted(task.step_runs, key=lambda item: item.sequence_no)
@@ -76,6 +168,16 @@ class TaskRunner:
         ]
 
     def _run_single_step(self, task: TaskRun, step) -> TaskRun:
+        """运行单个步骤的具体业务流（包括依赖注入、缓存校验、执行与持久化）。
+
+        用途:
+            用于具体执行某个步骤。若有需要会注入上游的输出 Artifact，计算缓存键（缓存命中则快速完成），否则调用对应的具体 Executor 执行，处理执行失败及重试逻辑，并在成功后持久化相关服务调用元数据，推进任务状态。
+
+        用法:
+            task = runner._run_single_step(task, step)
+
+        @Author: mosliu
+        """
         task_id = task.id
         step_id = step.id
         step_node_key = step.node_key
@@ -195,6 +297,16 @@ class TaskRunner:
         return task
 
     def _simulate_failure_if_configured(self, task: TaskRun, step) -> None:
+        """根据任务配置模拟特定的节点步骤失败。
+
+        用途:
+            支持从外部通过配置（一次性失败或持续失败配置）来模拟节点执行错误，以便测试重试机制和异常流程。
+
+        用法:
+            runner._simulate_failure_if_configured(task, step)
+
+        @Author: mosliu
+        """
         fail_once_nodes = set(task.options_payload.get("simulate_fail_once_nodes", []))
         fail_always_nodes = set(task.options_payload.get("simulate_fail_always_nodes", []))
         if step.node_key in fail_always_nodes:
@@ -203,11 +315,31 @@ class TaskRunner:
             raise StepExecutionFailedError(step.node_key, f"Simulated one-time failure for {step.node_key}")
 
     def _get_max_attempts(self, task: TaskRun) -> int:
+        """从任务选项中获取指定步骤的最大尝试（运行）次数。
+
+        用途:
+            读取任务重试策略参数，默认值为 2。
+
+        用法:
+            max_attempts = runner._get_max_attempts(task)
+
+        @Author: mosliu
+        """
         retry_policy = task.options_payload.get("retry_policy", {})
         max_attempts = retry_policy.get("max_attempts", 2)
         return max(1, int(max_attempts))
 
     def _build_cache_key(self, task: TaskRun, step) -> str | None:
+        """为步骤生成缓存键（Cache Key）。
+
+        用途:
+            结合步骤名称、模板信息、输入参数、选项参数及所有上游 Artifact 的哈希值，计算该步骤的 SHA256 唯一缓存键。若缓存被禁用则返回 None。
+
+        用法:
+            key = runner._build_cache_key(task, step)
+
+        @Author: mosliu
+        """
         if task.options_payload.get("disable_cache") is True:
             return None
         disabled_nodes = set(task.options_payload.get("disable_cache_nodes", []))

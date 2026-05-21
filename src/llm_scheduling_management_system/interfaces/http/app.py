@@ -15,6 +15,16 @@ from llm_scheduling_management_system.settings import settings
 
 
 def create_app() -> FastAPI:
+    """创建并配置 FastAPI 应用程序实例。
+
+    用途:
+        初始化日志、数据库，并注册访问控制中间件与所有的 API 路由。
+
+    用法:
+        app = create_app()
+
+    @Author: mosliu
+    """
     configure_logging()
     init_db()
     logger.info("Initializing FastAPI application for {}", settings.app_name)
@@ -28,6 +38,16 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     def healthcheck() -> dict[str, str]:
+        """系统健康检查端点。
+
+        用途:
+            提供轻量级的接口以检测应用是否正在运行。
+
+        用法:
+            GET /healthz
+
+        @Author: mosliu
+        """
         return {"status": "ok"}
 
     app.include_router(catalog_router)

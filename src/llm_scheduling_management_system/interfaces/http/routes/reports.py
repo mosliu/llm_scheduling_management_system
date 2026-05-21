@@ -9,6 +9,16 @@ router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
 
 class PublicOpinionReportRequest(BaseModel):
+    """舆情报告生成请求数据模型。
+
+    用途:
+        承载创建舆情报告任务时所需的各种配置选项和主题词。
+
+    用法:
+        req = PublicOpinionReportRequest(topic="AI趋势")
+
+    @Author: mosliu
+    """
     topic: str
     tenant_id: str = "default"
     disable_cache: bool = True
@@ -31,6 +41,17 @@ def create_public_opinion_report(
     request: PublicOpinionReportRequest,
     service: TaskService = Depends(get_task_service),
 ) -> CreateTaskResponse:
+    """创建并提交舆情报告生成任务。
+
+    用途:
+        使用指定的舆情报告工作流模板（public_opinion_report_v1）创建并异步启动任务。
+
+    用法:
+        POST /api/v1/reports/public-opinion
+        Body: PublicOpinionReportRequest
+
+    @Author: mosliu
+    """
     task = service.create_task(
         CreateTaskRequest(
             template_id="public_opinion_report_v1",
@@ -62,6 +83,16 @@ def get_public_opinion_final_report(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> FinalReportResponse:
+    """获取指定任务的最终生成的舆情报告。
+
+    用途:
+        从任务结果（生成物）中提取出最终渲染的 HTML 报告和元数据。
+
+    用法:
+        GET /api/v1/reports/public-opinion/{task_id}/final-report
+
+    @Author: mosliu
+    """
     payload = service.get_final_report(task_id)
     if payload is None:
         raise HTTPException(

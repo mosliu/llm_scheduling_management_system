@@ -57,6 +57,16 @@ def list_tasks(
     limit: int = Query(default=50, ge=1, le=200),
     service: TaskService = Depends(get_task_service),
 ) -> list[TaskSummaryResponse]:
+    """列出任务运行记录。
+
+    用途:
+        根据状态、模板ID、租户ID等过滤条件，获取任务简要状态（TaskSummaryResponse）的列表。
+
+    用法:
+        GET /api/v1/tasks?status=running&limit=10
+
+    @Author: mosliu
+    """
     tasks = service.list_tasks(
         status=status,
         template_id=template_id,
@@ -71,6 +81,17 @@ def create_task(
     request: CreateTaskRequest,
     service: TaskService = Depends(get_task_service),
 ) -> CreateTaskResponse:
+    """创建新的工作流任务。
+
+    用途:
+        支持根据指定的模板、输入和配置项，创建全新任务；或者基于特定检查点（Checkpoint）、生成物（Artifact）进行恢复，或者分叉（Fork）已存在的任务。
+
+    用法:
+        POST /api/v1/tasks
+        Body: CreateTaskRequest
+
+    @Author: mosliu
+    """
     try:
         task = service.create_task(request)
     except TaskTemplateNotFoundError as exc:
@@ -113,6 +134,16 @@ def get_task(
     include: str | None = Query(default=None, description="Reserved for future selective expansion."),
     service: TaskService = Depends(get_task_service),
 ) -> TaskDetailResponse:
+    """获取指定任务的详细信息。
+
+    用途:
+        查询特定任务运行记录（TaskRun）的全部详细信息，包括它的运行步骤、生成物和可用检查点等。
+
+    用法:
+        GET /api/v1/tasks/{task_id}
+
+    @Author: mosliu
+    """
     _ = include
     task = service.get_task(task_id)
     if task is None:
@@ -129,6 +160,16 @@ def list_task_steps(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[StepRunResponse]:
+    """获取指定任务的步骤运行记录列表。
+
+    用途:
+        获取任务关联的所有步骤运行记录（StepRun）列表。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/steps
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -145,6 +186,16 @@ def list_task_artifacts(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[ArtifactReferenceResponse]:
+    """获取指定任务的生成物引用列表。
+
+    用途:
+        列出当前任务产生的所有生成物（Artifact）的简要引用信息。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/artifacts
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -161,6 +212,16 @@ def list_task_checkpoints(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[CheckpointReferenceResponse]:
+    """获取指定任务的可用状态检查点列表。
+
+    用途:
+        列出当前任务包含的所有用于继续、回滚或分叉的检查点信息。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/checkpoints
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -177,6 +238,16 @@ def list_task_search_invocations(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[SearchInvocationResponse]:
+    """获取指定任务下的所有搜索接口调用记录。
+
+    用途:
+        获取整个任务执行过程中产生的所有网络搜索请求及其元数据。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/search-invocations
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -191,6 +262,16 @@ def list_task_fetch_invocations(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[FetchInvocationResponse]:
+    """获取指定任务下的所有网页内容抓取接口调用记录。
+
+    用途:
+        汇总获取整个任务执行过程中网页内容抓取（Fetch）的请求和响应信息。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/fetch-invocations
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -205,6 +286,16 @@ def list_task_llm_invocations(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[LLMInvocationResponse]:
+    """获取指定任务下的所有大模型接口调用记录。
+
+    用途:
+        汇总获取整个任务执行过程中各个步骤所发生的所有大模型（LLM）调用历史。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/llm-invocations
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -219,6 +310,16 @@ def list_task_tool_invocations(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[ToolInvocationResponse]:
+    """获取指定任务下的所有 MCP 工具调用记录。
+
+    用途:
+        汇总获取当前任务执行中发起的所有外部工具（Tool）调用及输入/输出。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/tool-invocations
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -233,6 +334,16 @@ def list_task_events(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> list[TaskEventResponse]:
+    """获取指定任务的全部事件/日志。
+
+    用途:
+        查询并获取此任务生命周期中记录的所有关键阶段转变或日志事件（TaskEvent）。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/events
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -247,6 +358,16 @@ def get_task_stats(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> TaskStatsResponse:
+    """获取指定任务的统计指标信息。
+
+    用途:
+        计算并统计该任务下步骤的执行状态分布、生成物的类型分布、API 各种调用（LLM、Search、Fetch、Tool）的汇总数。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/stats
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -300,6 +421,16 @@ def list_task_search_hits(
     published_before: str | None = Query(default=None),
     service: TaskService = Depends(get_task_service),
 ) -> list[SearchHitResponse]:
+    """获取指定任务执行期间记录到的搜索引擎命中的结果条目列表。
+
+    用途:
+        查询和筛选任务中由各搜索引擎所捕获到的网页/文献搜索结果摘要。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/search-hits
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -330,6 +461,16 @@ def list_task_documents(
     published_before: str | None = Query(default=None),
     service: TaskService = Depends(get_task_service),
 ) -> list[DocumentResponse]:
+    """获取指定任务执行期间获取的网页文档正文。
+
+    用途:
+        查询并检索该任务抓取到的真实网页文本内容。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/documents
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -355,6 +496,16 @@ def get_task_graph(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> TaskGraphResponse:
+    """获取该任务的血缘与执行步骤关系图。
+
+    用途:
+        解析步骤输入/输出、生成物依赖，构造出一张包含步骤节点和生成物节点的拓扑关系图（Nodes & Edges）。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/graph
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -439,6 +590,16 @@ def get_task_bundle(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> TaskBundleResponse:
+    """打包获取任务的全部运行时细节与关联日志数据。
+
+    用途:
+        提供一个一次性返回任务详情、统计信息、审计事件、搜索命中、网页文档、LLM/Fetch/Tool 接口调用明细的聚合包。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/bundle
+
+    @Author: mosliu
+    """
     task = service.get_task(task_id)
     if task is None:
         raise HTTPException(
@@ -498,6 +659,16 @@ def get_task_final_report(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> FinalReportResponse:
+    """获取该任务生成的最终报告。
+
+    用途:
+        直接提取并返回当前任务生成的最终 HTML 报告及相应的摘要数据。
+
+    用法:
+        GET /api/v1/tasks/{task_id}/final-report
+
+    @Author: mosliu
+    """
     payload = service.get_final_report(task_id)
     if payload is None:
         raise HTTPException(
@@ -512,6 +683,16 @@ def run_task(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> RunTaskResponse:
+    """启动或继续执行工作流任务。
+
+    用途:
+        将任务提交给后台执行器异步运行全部未执行完的步骤。
+
+    用法:
+        POST /api/v1/tasks/{task_id}/run
+
+    @Author: mosliu
+    """
     try:
         task = service.run_task(task_id)
     except TaskAlreadyCompletedError:
@@ -543,6 +724,16 @@ def run_next_step(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> RunTaskResponse:
+    """单步执行该任务的下一个待执行步骤。
+
+    用途:
+        支持工作流的人工单步调试模式，使任务只向后执行一步就暂停。
+
+    用法:
+        POST /api/v1/tasks/{task_id}/run-next-step
+
+    @Author: mosliu
+    """
     try:
         task = service.run_next_step(task_id)
     except TaskAlreadyCompletedError:
@@ -574,6 +765,16 @@ def cancel_task(
     task_id: str,
     service: TaskService = Depends(get_task_service),
 ) -> RunTaskResponse:
+    """取消当前正在运行的任务。
+
+    用途:
+        强行中断并停止正在执行的工作流任务，使任务状态流转为 "cancelled"。
+
+    用法:
+        POST /api/v1/tasks/{task_id}/cancel
+
+    @Author: mosliu
+    """
     try:
         task = service.cancel_task(task_id)
     except TaskNotCancellableError as exc:

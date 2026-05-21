@@ -183,11 +183,41 @@ DEFAULT_TEMPLATE_STEP_BLUEPRINTS = {
 
 
 class TaskRepository:
+    """任务仓库类。
+
+    用途:
+        提供针对任务（TaskRun）、步骤（StepRun）、制品（Artifact）以及相关调用痕迹（LLM/Search/Fetch 等）的统一持久化与查询接口。
+
+    用法:
+        repo = TaskRepository(session)
+
+    @Author: mosliu
+    """
     def __init__(self, session: Session) -> None:
+        """初始化任务仓库。
+
+        用途:
+            存储 SQLAlchemy Session 实例用于数据库交互。
+
+        用法:
+            repo = TaskRepository(session)
+
+        @Author: mosliu
+        """
         self.session = session
 
     @staticmethod
     def _compute_artifact_hash(content_json: dict, content_text: str | None) -> str:
+        """计算制品的哈希值。
+
+        用途:
+            根据制品的 JSON 内容 and 文本内容，通过 SHA256 计算出一个唯一的哈希字符串，用于校验完整性和做缓存键校验。
+
+        用法:
+            hash_val = TaskRepository._compute_artifact_hash(content_json, content_text)
+
+        @Author: mosliu
+        """
         payload = {
             "content_json": content_json,
             "content_text": content_text,
@@ -196,6 +226,16 @@ class TaskRepository:
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def ensure_default_templates(self) -> None:
+        """确保系统默认的工作流模板存在。
+
+        用途:
+            在数据库中自动初始化并补全系统默认的四种工作流模板（Event Summary, Public Opinion Analysis, Timeline, Report）。
+
+        用法:
+            repo.ensure_default_templates()
+
+        @Author: mosliu
+        """
         existing_ids = {
             template_id
             for template_id in self.session.scalars(select(WorkflowTemplate.id))
@@ -219,15 +259,55 @@ class TaskRepository:
             self.session.commit()
 
     def get_template(self, template_id: str) -> WorkflowTemplate | None:
+        """获取工作流模板。
+
+        用途:
+            根据模板 ID 从数据库检索 WorkflowTemplate 实体。
+
+        用法:
+            template = repo.get_template("event_summary_v1")
+
+        @Author: mosliu
+        """
         return self.session.get(WorkflowTemplate, template_id)
 
     def get_template_blueprint(self, template_id: str) -> list[dict]:
+        """获取模板的步骤蓝图。
+
+        用途:
+            获取指定工作流模板对应的静态步骤蓝图定义列表。
+
+        用法:
+            blueprint = repo.get_template_blueprint("event_summary_v1")
+
+        @Author: mosliu
+        """
         return list(DEFAULT_TEMPLATE_STEP_BLUEPRINTS.get(template_id, []))
 
     def list_templates(self) -> list[WorkflowTemplate]:
+        """列出所有模板。
+
+        用途:
+            检索数据库中所有的 WorkflowTemplate 并按 ID 排序返回。
+
+        用法:
+            templates = repo.list_templates()
+
+        @Author: mosliu
+        """
         return list(self.session.scalars(select(WorkflowTemplate).order_by(WorkflowTemplate.id)))
 
     def get_task_status_counts(self) -> dict[str, int]:
+        """获取不同状态的任务统计数。
+
+        用途:
+            统计当前数据库中所有 TaskRun 记录按 status 分组的数量并返回字典。
+
+        用法:
+            counts = repo.get_task_status_counts()
+
+        @Author: mosliu
+        """
         rows = self.session.execute(select(TaskRun.status))
         counts: dict[str, int] = {}
         for (status,) in rows:
@@ -242,6 +322,16 @@ class TaskRepository:
         tenant_id: str | None = None,
         limit: int = 50,
     ) -> list[TaskRun]:
+        """过滤和列出任务运行记录。
+
+        用途:
+            根据状态、模板 ID 和租户 ID 过滤 TaskRun 记录，按创建时间倒序返回列表。
+
+        用法:
+            tasks = repo.list_tasks(status="running", limit=10)
+
+        @Author: mosliu
+        """
         statement = select(TaskRun)
         if status:
             statement = statement.where(TaskRun.status == status)
@@ -259,6 +349,16 @@ class TaskRepository:
         template_id: str,
         idempotency_key: str,
     ) -> TaskRun | None:
+        """根据幂等键查找任务运行记录。
+
+        用途:
+            针对特定租户和模板，根据传入的幂等键查找已有的 TaskRun，以实现防重复提交逻辑。
+
+        用法:
+            task = repo.get_task_by_idempotency_key(tenant_id="t1", template_id="temp1", idempotency_key="key123")
+
+        @Author: mosliu
+        """
         statement = select(TaskRun).where(
             TaskRun.tenant_id == tenant_id,
             TaskRun.template_id == template_id,
@@ -267,6 +367,16 @@ class TaskRepository:
         return self.session.scalar(statement)
 
     def list_runnable_tasks(self, limit: int = 10) -> list[TaskRun]:
+        """列出可执行的任务。
+
+        用途:
+            获取状态处于 QUEUED、RUNNING 或 WAITING_RETRY 的 TaskRun 列表，按创建时间排序，供后台 Worker 调度执行。
+
+        用法:
+            tasks = repo.list_runnable_tasks(limit=10)
+
+        @Author: mosliu
+        """
         statement = (
             select(TaskRun)
             .where(TaskRun.status.in_([TaskStatus.QUEUED.value, TaskStatus.RUNNING.value, TaskStatus.WAITING_RETRY.value]))
@@ -276,6 +386,16 @@ class TaskRepository:
         return list(self.session.scalars(statement))
 
     def find_cached_artifact(self, cache_key: str) -> Artifact | None:
+        """查找缓存的可重用制品。
+
+        用途:
+            根据传入的步骤缓存键 (cache_key)，在数据库中检索最近生成的且被标记为可重用的 Artifact 记录。
+
+        用法:
+            artifact = repo.find_cached_artifact("cache_hash_string")
+
+        @Author: mosliu
+        """
         statement = (
             select(Artifact)
             .join(StepRun, Artifact.step_run_id == StepRun.id)
@@ -299,6 +419,29 @@ class TaskRepository:
         resume_seed_artifact_ids: list[str] | None,
         start_from_node_key: str | None,
     ) -> TaskRun:
+        """创建并初始化新任务。
+
+        用途:
+            根据模板、输入、配置和历史记录（如从某检查点/制品恢复或分叉），在数据库中创建并保存一个新的 TaskRun。
+            自动初始化首个系统接入步骤 (request_intake)，插入对应的接入制品 (task_request)、线索血缘 (ArtifactLineage)、初始检查点 (Checkpoint) 和事件日志，
+            并根据蓝图初始化后续步骤为 PENDING（待执行）或 SKIPPED（跳过）。
+
+        用法:
+            task = repo.create_task(
+                tenant_id="t1",
+                template=temp,
+                input_payload={"query": "test"},
+                options_payload={},
+                idempotency_key="idemp_123",
+                forked_from_task_run_id=None,
+                resume_from_checkpoint_id=None,
+                resume_from_artifact_id=None,
+                resume_seed_artifact_ids=None,
+                start_from_node_key=None
+            )
+
+        @Author: mosliu
+        """
         source_artifact_ids: list[str] = []
         if resume_seed_artifact_ids:
             source_artifact_ids = list(resume_seed_artifact_ids)
@@ -440,60 +583,210 @@ class TaskRepository:
         return task
 
     def get_task(self, task_id: str) -> TaskRun | None:
+        """根据任务 ID 获取任务。
+
+        用途:
+            从数据库中加载并返回指定 ID 的 TaskRun 对象。
+
+        用法:
+            task = repo.get_task("task_id_123")
+
+        @Author: mosliu
+        """
         return self.session.get(TaskRun, task_id)
 
     def get_step(self, step_run_id: str) -> StepRun | None:
+        """根据步骤运行 ID 获取步骤记录。
+
+        用途:
+            从数据库中加载并返回指定 ID 的 StepRun 对象。
+
+        用法:
+            step = repo.get_step("step_id_123")
+
+        @Author: mosliu
+        """
         return self.session.get(StepRun, step_run_id)
 
     def get_artifact(self, artifact_id: str) -> Artifact | None:
+        """根据制品 ID 获取制品记录。
+
+        用途:
+            从数据库中加载并返回指定 ID 的 Artifact 实体。
+
+        用法:
+            artifact = repo.get_artifact("artifact_id_123")
+
+        @Author: mosliu
+        """
         return self.session.get(Artifact, artifact_id)
 
     def get_checkpoint(self, checkpoint_id: str) -> Checkpoint | None:
+        """根据检查点 ID 获取检查点记录。
+
+        用途:
+            从数据库中加载并返回指定 ID 的 Checkpoint 实体。
+
+        用法:
+            checkpoint = repo.get_checkpoint("checkpoint_id_123")
+
+        @Author: mosliu
+        """
         return self.session.get(Checkpoint, checkpoint_id)
 
     def list_task_artifacts(self, task_id: str) -> list[Artifact]:
+        """列出特定任务下的所有制品。
+
+        用途:
+            按创建时间升序排列，返回该任务产生的所有 Artifact 记录列表。
+
+        用法:
+            artifacts = repo.list_task_artifacts("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(Artifact).where(Artifact.task_run_id == task_id).order_by(Artifact.created_at)
         return list(self.session.scalars(statement))
 
     def list_artifact_lineage(self, artifact_id: str) -> list[ArtifactLineage]:
+        """获取制品的血缘关系。
+
+        用途:
+            返回与指定制品 ID 相关（作为来源或目标）的所有 ArtifactLineage 记录列表。
+
+        用法:
+            lineages = repo.list_artifact_lineage("artifact_id_123")
+
+        @Author: mosliu
+        """
         statement = select(ArtifactLineage).where(
             (ArtifactLineage.from_artifact_id == artifact_id) | (ArtifactLineage.to_artifact_id == artifact_id)
         ).order_by(ArtifactLineage.created_at)
         return list(self.session.scalars(statement))
 
     def list_step_search_invocations(self, step_run_id: str) -> list[SearchInvocation]:
+        """列出特定步骤的搜索服务调用记录。
+
+        用途:
+            按创建时间升序排列，查询并返回指定步骤在执行过程中产生的 SearchInvocation 记录。
+
+        用法:
+            invocations = repo.list_step_search_invocations("step_id_123")
+
+        @Author: mosliu
+        """
         statement = select(SearchInvocation).where(SearchInvocation.step_run_id == step_run_id).order_by(SearchInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_step_fetch_invocations(self, step_run_id: str) -> list[FetchInvocation]:
+        """列出特定步骤的网页抓取服务调用记录。
+
+        用途:
+            按创建时间升序排列，获取指定步骤运行过程中产生的 FetchInvocation 记录。
+
+        用法:
+            invocations = repo.list_step_fetch_invocations("step_id_123")
+
+        @Author: mosliu
+        """
         statement = select(FetchInvocation).where(FetchInvocation.step_run_id == step_run_id).order_by(FetchInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_step_llm_invocations(self, step_run_id: str) -> list[LLMInvocation]:
+        """列出特定步骤的大语言模型服务调用记录。
+
+        用途:
+            按创建时间升序排列，检索指定步骤执行期间产生的所有 LLMInvocation 记录。
+
+        用法:
+            invocations = repo.list_step_llm_invocations("step_id_123")
+
+        @Author: mosliu
+        """
         statement = select(LLMInvocation).where(LLMInvocation.step_run_id == step_run_id).order_by(LLMInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_step_tool_invocations(self, step_run_id: str) -> list[ToolInvocation]:
+        """列出特定步骤的 MCP 工具调用记录。
+
+        用途:
+            按创建时间升序排列，检索指定步骤内产生的所有 ToolInvocation 记录。
+
+        用法:
+            invocations = repo.list_step_tool_invocations("step_id_123")
+
+        @Author: mosliu
+        """
         statement = select(ToolInvocation).where(ToolInvocation.step_run_id == step_run_id).order_by(ToolInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_task_search_invocations(self, task_id: str) -> list[SearchInvocation]:
+        """列出特定任务下的所有搜索服务调用记录。
+
+        用途:
+            获取该任务运行周期内产生的全部 SearchInvocation 记录，按时间升序返回。
+
+        用法:
+            invocations = repo.list_task_search_invocations("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(SearchInvocation).where(SearchInvocation.task_run_id == task_id).order_by(SearchInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_task_fetch_invocations(self, task_id: str) -> list[FetchInvocation]:
+        """列出特定任务下的所有网页抓取服务调用记录。
+
+        用途:
+            获取该任务运行周期内产生的全部 FetchInvocation 记录，按时间升序返回。
+
+        用法:
+            invocations = repo.list_task_fetch_invocations("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(FetchInvocation).where(FetchInvocation.task_run_id == task_id).order_by(FetchInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_task_llm_invocations(self, task_id: str) -> list[LLMInvocation]:
+        """列出特定任务下的所有大语言模型服务调用记录。
+
+        用途:
+            获取该任务运行周期内产生的全部 LLMInvocation 记录，按时间升序返回。
+
+        用法:
+            invocations = repo.list_task_llm_invocations("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(LLMInvocation).where(LLMInvocation.task_run_id == task_id).order_by(LLMInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_task_tool_invocations(self, task_id: str) -> list[ToolInvocation]:
+        """列出特定任务下的所有工具调用记录。
+
+        用途:
+            获取该任务运行周期内产生的全部 ToolInvocation 记录，按时间升序返回。
+
+        用法:
+            invocations = repo.list_task_tool_invocations("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(ToolInvocation).where(ToolInvocation.task_run_id == task_id).order_by(ToolInvocation.created_at)
         return list(self.session.scalars(statement))
 
     def list_task_events(self, task_id: str) -> list[TaskEvent]:
+        """列出任务关联的所有状态变更及行为事件。
+
+        用途:
+            返回该任务产生的所有事件记录（TaskEvent），以便于进行可视化追踪和审计。
+
+        用法:
+            events = repo.list_task_events("task_id_123")
+
+        @Author: mosliu
+        """
         statement = select(TaskEvent).where(TaskEvent.task_run_id == task_id).order_by(TaskEvent.created_at)
         return list(self.session.scalars(statement))
 
@@ -508,6 +801,16 @@ class TaskRepository:
         published_after: str | None = None,
         published_before: str | None = None,
     ) -> list[DocumentRecord]:
+        """列出任务范围内抓取的网页文档。
+
+        用途:
+            支持按服务商名称、域名、源类型、地区、发布时间段进行灵活过滤，返回符合条件的 DocumentRecord 列表。
+
+        用法:
+            docs = repo.list_task_documents("task_123", provider_name="exa", source_type="news")
+
+        @Author: mosliu
+        """
         statement = select(DocumentRecord).where(DocumentRecord.task_run_id == task_id)
         if provider_name:
             statement = statement.where(DocumentRecord.provider_name == provider_name)
@@ -535,6 +838,16 @@ class TaskRepository:
         published_after: str | None = None,
         published_before: str | None = None,
     ) -> list[DocumentRecord]:
+        """列出特定步骤范围内抓取的网页文档。
+
+        用途:
+            类似于 list_task_documents，但范围限制在单个步骤运行记录内，同样支持灵活的多字段过滤。
+
+        用法:
+            docs = repo.list_step_documents("step_123", source_domain="example.com")
+
+        @Author: mosliu
+        """
         statement = select(DocumentRecord).where(DocumentRecord.step_run_id == step_run_id)
         if provider_name:
             statement = statement.where(DocumentRecord.provider_name == provider_name)
@@ -561,6 +874,16 @@ class TaskRepository:
         published_after: str | None = None,
         published_before: str | None = None,
     ) -> list[SearchHitRecord]:
+        """列出任务关联的全部搜索命中记录。
+
+        用途:
+            支持服务商名称、来源类型、区域暗示和发布时间等过滤条件，返回满足要求的 SearchHitRecord 列表。
+
+        用法:
+            hits = repo.list_task_search_hits("task_123", region_hint="cn")
+
+        @Author: mosliu
+        """
         statement = select(SearchHitRecord).where(SearchHitRecord.task_run_id == task_id)
         if provider_name:
             statement = statement.where(SearchHitRecord.provider_name == provider_name)
@@ -585,6 +908,16 @@ class TaskRepository:
         published_after: str | None = None,
         published_before: str | None = None,
     ) -> list[SearchHitRecord]:
+        """列出特定步骤关联的搜索命中记录。
+
+        用途:
+            类似于 list_task_search_hits，但仅过滤单个步骤产生的结果，支持多维度过滤。
+
+        用法:
+            hits = repo.list_step_search_hits("step_123", source_type="social")
+
+        @Author: mosliu
+        """
         statement = select(SearchHitRecord).where(SearchHitRecord.step_run_id == step_run_id)
         if provider_name:
             statement = statement.where(SearchHitRecord.provider_name == provider_name)
@@ -600,6 +933,16 @@ class TaskRepository:
         return list(self.session.scalars(statement))
 
     def mark_task_running(self, task: TaskRun, *, current_step_run_id: str | None = None) -> TaskRun:
+        """将任务状态标记为运行中。
+
+        用途:
+            更新任务的开始时间及状态为运行中，记录相关任务事件并刷新会话状态。
+
+        用法:
+            repo.mark_task_running(task, current_step_run_id="step_123")
+
+        @Author: mosliu
+        """
         if task.started_at is None:
             task.started_at = utcnow()
         task.status = TaskStatus.RUNNING.value
@@ -619,6 +962,16 @@ class TaskRepository:
         return task
 
     def cancel_task(self, task: TaskRun) -> TaskRun:
+        """取消当前正在运行或等待的任务。
+
+        用途:
+            将任务状态更改为已取消，更新结束时间并记录任务取消事件。
+
+        用法:
+            repo.cancel_task(task)
+
+        @Author: mosliu
+        """
         task.status = TaskStatus.CANCELLED.value
         task.ended_at = utcnow()
         self.session.add(
@@ -643,6 +996,16 @@ class TaskRepository:
         error_message: str,
         max_attempts: int,
     ) -> TaskRun:
+        """处理步骤失败的情况，并根据最大尝试次数决定是重试还是标记失败。
+
+        用途:
+            步骤执行出错时调用，记录错误码和错误信息，判断是否可重试，若可重试则更新步骤状态为 RETRYING 且任务状态为 WAITING_RETRY，否则标记步骤为 FAILED 且任务为 FAILED 或 PARTIAL_FAILED，写入对应事件。
+
+        用法:
+            repo.fail_step(task=task, step=step, error_code="ERR_500", error_message="Internal Error", max_attempts=3)
+
+        @Author: mosliu
+        """
         now = utcnow()
         step.started_at = step.started_at or now
         step.ended_at = utcnow()
@@ -704,6 +1067,16 @@ class TaskRepository:
         error_message: str,
         max_attempts: int,
     ) -> TaskRun:
+        """处理步骤失败的情况，并根据最大尝试次数决定是重试还是标记失败（重复定义以保持代码原样）。
+
+        用途:
+            步骤执行出错时调用，记录错误码和错误信息，判断是否可重试，若可重试则更新步骤状态为 RETRYING 且任务状态为 WAITING_RETRY，否则标记步骤为 FAILED 且任务为 FAILED 或 PARTIAL_FAILED，写入对应事件。
+
+        用法:
+            repo.fail_step(task=task, step=step, error_code="ERR_500", error_message="Internal Error", max_attempts=3)
+
+        @Author: mosliu
+        """
         now = utcnow()
         step.started_at = step.started_at or now
         step.ended_at = utcnow()
@@ -764,6 +1137,16 @@ class TaskRepository:
         cache_key: str,
         source_artifact: Artifact,
     ) -> TaskRun:
+        """从缓存的 Artifact 快速完成当前步骤。
+
+        用途:
+            利用已有的 Artifact 缓存跳过步骤的实际计算。会复制该 Artifact，建立缓存谱系，更新步骤状态为 CACHED，并根据完成的步骤进度更新任务进度与状态。
+
+        用法:
+            repo.complete_step_from_cache(task=task, step=step, cache_key="key_abc", source_artifact=old_art)
+
+        @Author: mosliu
+        """
         now = utcnow()
         step.status = StepStatus.CACHED.value
         step.started_at = step.started_at or now
@@ -864,6 +1247,16 @@ class TaskRepository:
         llm_invocations: list | None = None,
         cache_key: str | None = None,
     ) -> TaskRun:
+        """推进步骤的执行，创建输出 Artifact 及检查点，并记录相关服务的调用。
+
+        用途:
+            在步骤正常执行完成后调用。用于将步骤标记为运行并最终标记为成功，创建新的 Artifact 和 Checkpoint，建立输入输出依赖图（谱系），将各服务（搜索、网页抓取、MCP工具、LLM）的调用详情写入数据库，并更新任务进度和状态。
+
+        用法:
+            repo.advance_step(task=task, step=step, artifact_type="report", ...)
+
+        @Author: mosliu
+        """
         now = utcnow()
         input_artifact_ids = input_artifact_ids or []
         search_invocations = search_invocations or []

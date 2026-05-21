@@ -6,7 +6,29 @@ from llm_scheduling_management_system.providers.factory import LLMProviderFactor
 
 
 class ConfigTestService:
+    """配置连接测试服务类。
+
+    用途:
+        用于对各种配置（搜索服务商、大语言模型配置、MCP 服务器配置）进行可用性、连通性的校验与健康检查。
+
+    用法:
+        service = ConfigTestService()
+        result = service.test_search_config(search_config)
+
+    @Author: mosliu
+    """
+
     def test_search_config(self, config: SearchConfig) -> dict:
+        """测试搜索引擎的配置连通性。
+
+        用途:
+            遍历已启用的搜索供应商配置，使用 "sanity check" 关键词进行单条搜索尝试，返回测试结果明细字典。
+
+        用法:
+            res = service.test_search_config(config)
+
+        @Author: mosliu
+        """
         factory = SearchProviderFactory(config=config)
         results = []
         for provider_cfg in config.providers:
@@ -32,6 +54,16 @@ class ConfigTestService:
         return {"results": results}
 
     def test_llm_config(self, config: LLMConfig) -> dict:
+        """测试大语言模型 Profiles 的配置连通性。
+
+        用途:
+            遍历 LLM 配置中的所有 Profiles，利用 "Reply with OK only." 提示词生成单次回复测试连通性，并返回结果详情。
+
+        用法:
+            res = service.test_llm_config(config)
+
+        @Author: mosliu
+        """
         factory = LLMProviderFactory(config=config)
         results = []
         for profile in config.profiles:
@@ -52,6 +84,16 @@ class ConfigTestService:
         return {"results": results}
 
     def test_mcp_config(self, config: MCPConfig) -> dict:
+        """测试 MCP (Model Context Protocol) 服务的配置连通性。
+
+        用途:
+            遍历启用的 MCP 服务器，尝试调用其特有工具（如 list_docs 或 ping），评估其就绪状态并返回测试报告。
+
+        用法:
+            res = service.test_mcp_config(config)
+
+        @Author: mosliu
+        """
         results = []
         for server in config.servers:
             if not server.enabled:

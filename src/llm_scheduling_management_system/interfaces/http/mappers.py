@@ -28,6 +28,16 @@ from llm_scheduling_management_system.schemas.tasks import (
 
 
 def map_task_summary(task: TaskRun) -> TaskSummaryResponse:
+    """映射任务运行实例的摘要响应模型。
+
+    用途:
+        将领域层的 TaskRun 数据库对象映射为 API 的 TaskSummaryResponse 传输对象。
+
+    用法:
+        summary = map_task_summary(task_run)
+
+    @Author: mosliu
+    """
     current_step = None
     current_step_run_id = task.current_step_run_id
     if current_step_run_id:
@@ -54,6 +64,16 @@ def map_task_summary(task: TaskRun) -> TaskSummaryResponse:
 
 
 def map_task_detail(task: TaskRun) -> TaskDetailResponse:
+    """映射任务运行实例的详细信息响应模型。
+
+    用途:
+        将领域层的 TaskRun 数据库对象映射为包含步骤、生成物、检查点详细信息的 TaskDetailResponse 传输对象。
+
+    用法:
+        detail = map_task_detail(task_run)
+
+    @Author: mosliu
+    """
     summary = map_task_summary(task)
     steps = [
         StepRunResponse(
@@ -95,6 +115,16 @@ def map_task_detail(task: TaskRun) -> TaskDetailResponse:
 
 
 def map_template(template: WorkflowTemplate) -> WorkflowTemplateResponse:
+    """映射工作流模板响应模型。
+
+    用途:
+        将领域层的 WorkflowTemplate 数据库实体对象映射为 API 的 WorkflowTemplateResponse 传输对象。
+
+    用法:
+        response = map_template(template)
+
+    @Author: mosliu
+    """
     return WorkflowTemplateResponse(
         template_id=template.id,
         name=template.name,
@@ -105,6 +135,16 @@ def map_template(template: WorkflowTemplate) -> WorkflowTemplateResponse:
 
 
 def map_template_detail(template: WorkflowTemplate, blueprint: list[dict]) -> WorkflowTemplateDetailResponse:
+    """映射工作流模板详细响应模型。
+
+    用途:
+        结合模板实体和步骤蓝图元数据，映射为 WorkflowTemplateDetailResponse 传输对象。
+
+    用法:
+        detail = map_template_detail(template, blueprint)
+
+    @Author: mosliu
+    """
     return WorkflowTemplateDetailResponse(
         template_id=template.id,
         name=template.name,
@@ -124,6 +164,16 @@ def map_template_detail(template: WorkflowTemplate, blueprint: list[dict]) -> Wo
 
 
 def map_step_detail(step: StepRun) -> StepDetailResponse:
+    """映射步骤运行实例的详细响应模型。
+
+    用途:
+        将领域层的 StepRun 数据库实体映射为 StepDetailResponse 传输对象。
+
+    用法:
+        response = map_step_detail(step_run)
+
+    @Author: mosliu
+    """
     return StepDetailResponse(
         step_run_id=step.id,
         task_run_id=step.task_run_id,
@@ -148,6 +198,16 @@ def map_step_detail(step: StepRun) -> StepDetailResponse:
 
 
 def map_artifact_detail(artifact: Artifact) -> ArtifactDetailResponse:
+    """映射生成物的详细响应模型。
+
+    用途:
+        将领域层的 Artifact 数据库实体映射为 ArtifactDetailResponse 传输对象。
+
+    用法:
+        response = map_artifact_detail(artifact)
+
+    @Author: mosliu
+    """
     return ArtifactDetailResponse(
         artifact_id=artifact.id,
         task_run_id=artifact.task_run_id,
@@ -165,6 +225,16 @@ def map_artifact_detail(artifact: Artifact) -> ArtifactDetailResponse:
 
 
 def map_checkpoint_detail(checkpoint: Checkpoint) -> CheckpointDetailResponse:
+    """映射检查点的详细响应模型。
+
+    用途:
+        将领域层的 Checkpoint 数据库实体映射为 CheckpointDetailResponse 传输对象。
+
+    用法:
+        response = map_checkpoint_detail(checkpoint)
+
+    @Author: mosliu
+    """
     return CheckpointDetailResponse(
         checkpoint_id=checkpoint.id,
         task_run_id=checkpoint.task_run_id,
@@ -178,6 +248,16 @@ def map_checkpoint_detail(checkpoint: Checkpoint) -> CheckpointDetailResponse:
 
 
 def map_artifact_lineage_edge(lineage) -> ArtifactLineageEdgeResponse:
+    """映射生成物血缘关系边响应模型。
+
+    用途:
+        将生成物关系链对象映射为 ArtifactLineageEdgeResponse 传输对象。
+
+    用法:
+        edge = map_artifact_lineage_edge(lineage)
+
+    @Author: mosliu
+    """
     return ArtifactLineageEdgeResponse(
         lineage_id=lineage.id,
         from_artifact_id=lineage.from_artifact_id,
@@ -187,6 +267,16 @@ def map_artifact_lineage_edge(lineage) -> ArtifactLineageEdgeResponse:
 
 
 def map_search_invocation(invocation) -> SearchInvocationResponse:
+    """映射搜索调用日志响应模型。
+
+    用途:
+        将搜索调用详情对象映射为 SearchInvocationResponse 传输对象。
+
+    用法:
+        response = map_search_invocation(invocation)
+
+    @Author: mosliu
+    """
     return SearchInvocationResponse(
         invocation_id=invocation.id,
         provider_name=invocation.provider_name,
@@ -199,6 +289,16 @@ def map_search_invocation(invocation) -> SearchInvocationResponse:
 
 
 def map_fetch_invocation(invocation) -> FetchInvocationResponse:
+    """映射抓取调用日志响应模型。
+
+    用途:
+        将内容抓取调用详情对象映射为 FetchInvocationResponse 传输对象。
+
+    用法:
+        response = map_fetch_invocation(invocation)
+
+    @Author: mosliu
+    """
     return FetchInvocationResponse(
         invocation_id=invocation.id,
         provider_name=invocation.provider_name,
@@ -211,6 +311,16 @@ def map_fetch_invocation(invocation) -> FetchInvocationResponse:
 
 
 def map_tool_invocation(invocation) -> ToolInvocationResponse:
+    """映射工具调用日志响应模型。
+
+    用途:
+        将 MCP 工具调用详情对象映射为 ToolInvocationResponse 传输对象。
+
+    用法:
+        response = map_tool_invocation(invocation)
+
+    @Author: mosliu
+    """
     return ToolInvocationResponse(
         invocation_id=invocation.id,
         server_name=invocation.server_name,
@@ -222,6 +332,16 @@ def map_tool_invocation(invocation) -> ToolInvocationResponse:
 
 
 def map_llm_invocation(invocation) -> LLMInvocationResponse:
+    """映射 LLM 调用日志响应模型。
+
+    用途:
+        将 LLM 调用日志对象映射为 LLMInvocationResponse 传输对象。
+
+    用法:
+        response = map_llm_invocation(invocation)
+
+    @Author: mosliu
+    """
     return LLMInvocationResponse(
         invocation_id=invocation.id,
         provider_name=invocation.provider_name,
@@ -236,6 +356,16 @@ def map_llm_invocation(invocation) -> LLMInvocationResponse:
 
 
 def map_configured_provider(provider) -> ConfiguredProviderResponse:
+    """映射已配置的搜索提供商响应模型。
+
+    用途:
+        将配置项中的搜索提供商信息映射为 ConfiguredProviderResponse 传输对象。
+
+    用法:
+        response = map_configured_provider(provider)
+
+    @Author: mosliu
+    """
     return ConfiguredProviderResponse(
         name=provider.name,
         provider_type=provider.provider_type,
@@ -246,6 +376,16 @@ def map_configured_provider(provider) -> ConfiguredProviderResponse:
 
 
 def map_configured_llm_provider(provider) -> ConfiguredLLMProviderResponse:
+    """映射已配置的 LLM 提供商响应模型。
+
+    用途:
+        将配置项中的 LLM 提供商信息映射为 ConfiguredLLMProviderResponse 传输对象。
+
+    用法:
+        response = map_configured_llm_provider(provider)
+
+    @Author: mosliu
+    """
     return ConfiguredLLMProviderResponse(
         name=provider.name,
         provider_type=provider.provider_type,
@@ -254,6 +394,16 @@ def map_configured_llm_provider(provider) -> ConfiguredLLMProviderResponse:
 
 
 def map_configured_llm_profile(profile) -> ConfiguredLLMProfileResponse:
+    """映射已配置的 LLM 配置文件响应模型。
+
+    用途:
+        将配置项中的 LLM 配置文件映射为 ConfiguredLLMProfileResponse 传输对象。
+
+    用法:
+        response = map_configured_llm_profile(profile)
+
+    @Author: mosliu
+    """
     return ConfiguredLLMProfileResponse(
         name=profile.name,
         provider=profile.provider,
@@ -264,6 +414,16 @@ def map_configured_llm_profile(profile) -> ConfiguredLLMProfileResponse:
 
 
 def map_source_registry_entry(entry) -> SourceRegistryEntryResponse:
+    """映射来源网站注册项响应模型。
+
+    用途:
+        将网站信誉源表注册项映射为 SourceRegistryEntryResponse 传输对象。
+
+    用法:
+        response = map_source_registry_entry(entry)
+
+    @Author: mosliu
+    """
     return SourceRegistryEntryResponse(
         domain=entry.domain,
         region_hint=entry.region_hint,
@@ -274,6 +434,16 @@ def map_source_registry_entry(entry) -> SourceRegistryEntryResponse:
 
 
 def map_mcp_server(entry) -> MCPServerResponse:
+    """映射已配置的 MCP 服务器响应模型。
+
+    用途:
+        将配置项中的 MCP 服务映射为 MCPServerResponse 传输对象。
+
+    用法:
+        response = map_mcp_server(entry)
+
+    @Author: mosliu
+    """
     return MCPServerResponse(
         name=entry.name,
         transport=entry.transport,
@@ -286,6 +456,16 @@ def map_mcp_server(entry) -> MCPServerResponse:
 
 
 def map_task_event(event) -> TaskEventResponse:
+    """映射任务事件/日志响应模型。
+
+    用途:
+        将数据库中的 TaskEvent 映射为 TaskEventResponse 传输对象。
+
+    用法:
+        response = map_task_event(event)
+
+    @Author: mosliu
+    """
     return TaskEventResponse(
         event_id=event.id,
         task_run_id=event.task_run_id,
@@ -298,6 +478,16 @@ def map_task_event(event) -> TaskEventResponse:
 
 
 def map_search_hit(hit) -> SearchHitResponse:
+    """映射搜索命中结果响应模型。
+
+    用途:
+        将持久化的搜索命中实体映射为 SearchHitResponse 传输对象。
+
+    用法:
+        response = map_search_hit(hit)
+
+    @Author: mosliu
+    """
     return SearchHitResponse(
         search_hit_id=hit.id,
         provider_name=hit.provider_name,
@@ -314,6 +504,16 @@ def map_search_hit(hit) -> SearchHitResponse:
 
 
 def map_document(document) -> DocumentResponse:
+    """映射已获取网页文档的响应模型。
+
+    用途:
+        将持久化的已获取网页文档实体映射为 DocumentResponse 传输对象。
+
+    用法:
+        response = map_document(document)
+
+    @Author: mosliu
+    """
     return DocumentResponse(
         document_id=document.id,
         provider_name=document.provider_name,

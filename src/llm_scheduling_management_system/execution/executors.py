@@ -17,21 +17,61 @@ DATE_PATTERN = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
 
 
 def _find_upstream_artifacts(task: TaskRun, step: StepRun) -> list[Artifact]:
+    """寻找当前步骤的上游生成物（Artifacts）。
+
+    用途:
+        根据步骤中关联的上游生成物引用 ID，从任务的全部生成物列表中查找并返回对应的实体对象。
+
+    用法:
+        artifacts = _find_upstream_artifacts(task, step)
+
+    @Author: mosliu
+    """
     artifact_by_id = {artifact.id: artifact for artifact in task.artifacts}
     return [artifact_by_id[artifact_id] for artifact_id in step.input_artifact_refs if artifact_id in artifact_by_id]
 
 
 def _first_upstream_artifact(task: TaskRun, step: StepRun) -> Artifact | None:
+    """获取当前步骤的第一个上游生成物。
+
+    用途:
+        辅助方法，用于快速获取步骤所需的第一个上游输入实体。
+
+    用法:
+        artifact = _first_upstream_artifact(task, step)
+
+    @Author: mosliu
+    """
     artifacts = _find_upstream_artifacts(task, step)
     return artifacts[0] if artifacts else None
 
 
 def _normalize_document_preview(text: str, limit: int = 220) -> str:
+    """规范化并截取文档预览文本。
+
+    用途:
+        将文本中的多余空白字符合并，并截断至指定长度，主要用于生成文摘或预览。
+
+    用法:
+        preview = _normalize_document_preview(long_text, limit=150)
+
+    @Author: mosliu
+    """
     collapsed = " ".join((text or "").split())
     return collapsed[:limit]
 
 
 def _build_bulleted_key_points(text: str | None, limit: int = 3) -> list[str]:
+    """提取文本关键点列表。
+
+    用途:
+        对输入的文本进行断句，并提取前 limit 个非空语句作为项目符号关键点。
+
+    用法:
+        points = _build_bulleted_key_points(content_text, limit=3)
+
+    @Author: mosliu
+    """
     normalized = " ".join((text or "").split())
     if not normalized:
         return []
@@ -48,6 +88,16 @@ def _build_bulleted_key_points(text: str | None, limit: int = 3) -> list[str]:
 
 
 def _canonicalize_url(url: str | None) -> str:
+    """规范化 URL。
+
+    用途:
+        统一 URL 的格式（如小写协议和域名，去除末尾斜杠等），便于进行去重对比。
+
+    用法:
+        clean_url = _canonicalize_url(raw_url)
+
+    @Author: mosliu
+    """
     if not url:
         return ""
     candidate = url.strip()
@@ -64,6 +114,16 @@ def _canonicalize_url(url: str | None) -> str:
 
 
 def _choose_longer_text(left: str | None, right: str | None) -> str | None:
+    """选择较长的文本。
+
+    用途:
+        比较两个字符串的长度，返回非空且长度较长的那一个，常用于多源数据字段合并时的信息最大化。
+
+    用法:
+        best_title = _choose_longer_text(title_a, title_b)
+
+    @Author: mosliu
+    """
     left = (left or "").strip()
     right = (right or "").strip()
     if not left:
@@ -74,6 +134,16 @@ def _choose_longer_text(left: str | None, right: str | None) -> str | None:
 
 
 def _merge_hit_records(existing: dict, incoming: dict) -> dict:
+    """合并搜索命中（Hit）记录。
+
+    用途:
+        在去重过程中，合并两个相同 URL 的命中条目，保留更长（信息更全）的标题、摘要等，并聚合匹配到的提供商和域名。
+
+    用法:
+        merged_hit = _merge_hit_records(existing_hit, new_hit)
+
+    @Author: mosliu
+    """
     merged = dict(existing)
     merged["title"] = _choose_longer_text(existing.get("title"), incoming.get("title")) or ""
     merged["snippet"] = _choose_longer_text(existing.get("snippet"), incoming.get("snippet"))
@@ -101,6 +171,16 @@ def _merge_hit_records(existing: dict, incoming: dict) -> dict:
 
 
 def _merge_document_records(existing: dict, incoming: dict) -> dict:
+    """合并已获取的文档记录。
+
+    用途:
+        在抓取去重过程中，合并两个相同 URL 的抓取文档记录，最大化保留正文内容和元数据。
+
+    用法:
+        merged_doc = _merge_document_records(existing_doc, new_doc)
+
+    @Author: mosliu
+    """
     merged = dict(existing)
     merged["canonical_url"] = existing.get("canonical_url") or incoming.get("canonical_url")
     merged["url"] = existing.get("url") or incoming.get("url")
@@ -136,17 +216,68 @@ def _merge_document_records(existing: dict, incoming: dict) -> dict:
 
 
 class StepExecutor(ABC):
+    """步骤执行器基类。
+
+    用途:
+        定义所有具体工作流步骤执行器的抽象接口。
+
+    用法:
+        作为一个抽象基类被继承，具体执行器需要实现 `execute` 方法。
+
+    @Author: mosliu
+    """
     @abstractmethod
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行该步骤的具体逻辑。
+
+        用途:
+            抽象方法，定义单步任务执行的接口，由具体的执行器子类实现。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         raise NotImplementedError
 
 
 class SearchFanoutExecutor(StepExecutor):
+    """多引擎并行检索执行器。
+
+    用途:
+        用于并行调用多个搜索服务提供商检索相关的主题文章，并对检索结果进行 URL 规范化和初步去重合并。
+
+    用法:
+        executor = SearchFanoutExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def __init__(self, search_provider_factory: SearchProviderFactory | None = None) -> None:
+        """初始化多引擎并行检索执行器。
+
+        用途:
+            初始化搜索工厂和来源网站元数据注册表。
+
+        用法:
+            在创建 SearchFanoutExecutor 实例时传入可选的工厂。
+
+        @Author: mosliu
+        """
         self.search_provider_factory = search_provider_factory or SearchProviderFactory()
         self.source_registry = SourceRegistry()
 
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行多引擎并行检索与结果合并去重。
+
+        用途:
+            获取搜索词和引擎配置，并行执行检索，调用 `_canonicalize_url` 和 `_merge_hit_records` 合并检索结果。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         topic = task.input_payload.get("topic", "")
         time_range = task.input_payload.get("time_range", {})
         configured_default_limit = self.search_provider_factory.config.policy.max_results_per_provider
@@ -236,11 +367,42 @@ class SearchFanoutExecutor(StepExecutor):
 
 
 class FetchDocumentsExecutor(StepExecutor):
+    """文档正文抓取执行器。
+
+    用途:
+        针对上游检索得到的网页链接，调用网页抓取服务提取网页内容（正文、作者等），并再次按 canonical_url 进行去重和合并。
+
+    用法:
+        executor = FetchDocumentsExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def __init__(self, search_provider_factory: SearchProviderFactory | None = None) -> None:
+        """初始化文档正文抓取执行器。
+
+        用途:
+            配置抓取所需的搜索提供商工厂和来源网站元数据注册表。
+
+        用法:
+            实例化 FetchDocumentsExecutor 时，可指定自定义工厂。
+
+        @Author: mosliu
+        """
         self.search_provider_factory = search_provider_factory or SearchProviderFactory()
         self.source_registry = SourceRegistry()
 
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行文档正文提取和去重。
+
+        用途:
+            从上游生成物中获取 URL 列表，调用网页抓取服务获取文本内容，并合并重复项。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         fetch_provider_name = task.options_payload.get("fetch_provider_name")
         fetch_provider = (
             self.search_provider_factory.build_fetch_provider_by_name(fetch_provider_name)
@@ -330,10 +492,41 @@ class FetchDocumentsExecutor(StepExecutor):
 
 
 class MCPToolExecutor(StepExecutor):
+    """MCP 工具执行器。
+
+    用途:
+        用于调用外部 Model Context Protocol (MCP) 服务器提供的工具，获取特定上下文信息（如本地文档、参考文件等）。
+
+    用法:
+        executor = MCPToolExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def __init__(self, registry: MCPRegistry | None = None) -> None:
+        """初始化 MCP 工具执行器。
+
+        用途:
+            配置用于构建 MCP 客户端的注册表对象。
+
+        用法:
+            实例化 MCPToolExecutor 时可传入自定义 MCP 注册表。
+
+        @Author: mosliu
+        """
         self.registry = registry or MCPRegistry()
 
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行 MCP 工具调用。
+
+        用途:
+            根据配置构建客户端，调用指定的 MCP 工具，并将返回的结果格式化为步骤执行结果。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         server_name = task.options_payload.get("mcp_server_name", "internal_tools")
         tool_name = task.options_payload.get("mcp_tool_name", "list_docs")
@@ -392,7 +585,28 @@ class MCPToolExecutor(StepExecutor):
 
 
 class MergeSearchResultsExecutor(StepExecutor):
+    """检索结果合并执行器。
+
+    用途:
+        合并来自不同渠道的数据生成物（如已抓取的网络文档和 MCP 工具返回的本地上下文文档），生成统一的合并结果集。
+
+    用法:
+        executor = MergeSearchResultsExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行上游数据生成物的合并。
+
+        用途:
+            遍历上游生成物，提取网络文档和 MCP 文档，对其格式化并进行文本规范化预览。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifacts = _find_upstream_artifacts(task, step)
         documents = []
@@ -437,7 +651,28 @@ class MergeSearchResultsExecutor(StepExecutor):
 
 
 class NormalizeAndFilterExecutor(StepExecutor):
+    """规范化与过滤执行器。
+
+    用途:
+        根据配置的源策略（如要求非空正文、限制特定地域等）对上游文档进行过滤筛选。
+
+    用法:
+        executor = NormalizeAndFilterExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行规范化与过滤。
+
+        用途:
+            基于配置过滤无效或不需要的文档记录。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         policy = task.options_payload.get("source_policy", {})
         upstream = list(step.input_artifact_refs)
         source_artifact = _first_upstream_artifact(task, step)
@@ -471,7 +706,28 @@ class NormalizeAndFilterExecutor(StepExecutor):
 
 
 class ClassifyAndFilterSourcesExecutor(StepExecutor):
+    """源分类与统计执行器。
+
+    用途:
+        对上游文档进行多维度统计（如地域分布、出版物类型、源类型），辅助生成分析报告。
+
+    用法:
+        executor = ClassifyAndFilterSourcesExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行文档源的统计与维度分析。
+
+        用途:
+            统计不同地域、发布类型、源类型下的文档数量。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifact = _first_upstream_artifact(task, step)
         documents = source_artifact.content_json.get("documents", []) if source_artifact else []
@@ -506,7 +762,28 @@ class ClassifyAndFilterSourcesExecutor(StepExecutor):
 
 
 class ExtractOfficialResponsesExecutor(StepExecutor):
+    """官方回应提取执行器。
+
+    用途:
+        从检索到的所有文档中识别并提取带有官方/政府/调查等关键字的公告或通报。
+
+    用法:
+        executor = ExtractOfficialResponsesExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行官方回应提取。
+
+        用途:
+            分析文档标题与内容，对符合官方通报特征的文档生成摘要与要点。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifacts = _find_upstream_artifacts(task, step)
         documents = []
@@ -565,7 +842,28 @@ class ExtractOfficialResponsesExecutor(StepExecutor):
 
 
 class SegmentPublicOpinionExecutor(StepExecutor):
+    """舆情观点分段执行器。
+
+    用途:
+        对上游合并的文档和官方回应进行分类，区分媒体观点和网民/社交媒体观点，提供结构化舆情输入。
+
+    用法:
+        executor = SegmentPublicOpinionExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行舆情观点分类与切片。
+
+        用途:
+            将文档区分为社会化媒体（网民观点）与其他媒体，格式化为舆情分析所需的数据集。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifacts = _find_upstream_artifacts(task, step)
         merged_documents = []
@@ -634,7 +932,28 @@ class SegmentPublicOpinionExecutor(StepExecutor):
 
 
 class ExtractEventTimeExecutor(StepExecutor):
+    """事件发生时间提取执行器。
+
+    用途:
+        利用正则表达式或元数据，从已获取文档的文本预览中识别并提取事件相关候选时间戳。
+
+    用法:
+        executor = ExtractEventTimeExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行候选事件时间戳提取。
+
+        用途:
+            遍历文档并通过正则匹配识别年份时间节点，生成时间线候选集。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifacts = _find_upstream_artifacts(task, step)
         documents = []
@@ -669,7 +988,28 @@ class ExtractEventTimeExecutor(StepExecutor):
 
 
 class BuildTimelineExecutor(StepExecutor):
+    """时间线构建执行器。
+
+    用途:
+        对上游提取出来的所有候选事件时间节点进行排序，构建按时间顺序排列的事件脉络/时间线。
+
+    用法:
+        executor = BuildTimelineExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行时间线构建与排序。
+
+        用途:
+            从上游获取时间候选，按事件发生时间升序排列。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         upstream = list(step.input_artifact_refs)
         source_artifact = _first_upstream_artifact(task, step)
         candidates = source_artifact.content_json.get("candidates", []) if source_artifact else []
@@ -690,12 +1030,43 @@ class BuildTimelineExecutor(StepExecutor):
 
 
 class LLMReportExecutor(StepExecutor):
+    """大模型报告生成执行器。
+
+    用途:
+        根据舆情分析的结构化数据（时间线、官方回应、舆情观点等），构建提示词并调用大语言模型（LLM）生成最终报告。
+
+    用法:
+        executor = LLMReportExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def __init__(self, llm_provider_factory: LLMProviderFactory | None = None, profile_name: str = "advanced_reasoning_cn") -> None:
+        """初始化大模型报告生成执行器。
+
+        用途:
+            配置 LLM 厂商工厂和默认的配置模型标识符。
+
+        用法:
+            实例化 LLMReportExecutor 时可指定自定义工厂和默认配置模板。
+
+        @Author: mosliu
+        """
         self.llm_provider_factory = llm_provider_factory or LLMProviderFactory()
         self.profile_name = profile_name
 
     @staticmethod
     def _provider_runtime_details(provider) -> tuple[str, str, str, bool]:
+        """获取服务提供商运行时信息。
+
+        用途:
+            辅助方法，用于提取 LLM Provider 的名称、类型、具体使用的模型名以及是否处于模拟状态。
+
+        用法:
+            name, type_str, model, simulated = LLMReportExecutor._provider_runtime_details(provider)
+
+        @Author: mosliu
+        """
         provider_name = (
             getattr(provider, "provider", getattr(provider, "provider_name", None)).name
             if hasattr(getattr(provider, "provider", None), "name")
@@ -708,6 +1079,16 @@ class LLMReportExecutor(StepExecutor):
 
     @staticmethod
     def _provider_http_exchange(provider) -> tuple[dict, dict]:
+        """获取最近一次 HTTP 请求与响应报文快照。
+
+        用途:
+            辅助方法，用于获取 provider 内部记录的上一次网络请求与应答快照。
+
+        用法:
+            req, resp = LLMReportExecutor._provider_http_exchange(provider)
+
+        @Author: mosliu
+        """
         request_snapshot = getattr(provider, "last_request_snapshot", {}) or {}
         response_snapshot = getattr(provider, "last_response_snapshot", {}) or {}
         return request_snapshot, response_snapshot
@@ -722,6 +1103,16 @@ class LLMReportExecutor(StepExecutor):
         evidence_lines: list[str],
         last_error: str | None,
     ) -> str:
+        """构建确定性报告备用文本。
+
+        用途:
+            在 LLM 多次重试生成失败时，通过已整理的结构化中间数据（时间线、舆情切片等），降级自动生成一份确定性的基础舆情报告。
+
+        用法:
+            report_text = LLMReportExecutor._build_deterministic_report_fallback(...)
+
+        @Author: mosliu
+        """
         timeline_lines = []
         for item in timeline[:12]:
             title = item.get("title") or item.get("url") or "未命名条目"
@@ -795,6 +1186,16 @@ class LLMReportExecutor(StepExecutor):
         public_viewpoints: list[dict],
         evidence_lines: list[str],
     ) -> tuple[str, list[LLMInvocationRecord], str]:
+        """执行带有重试和降级策略的报告生成。
+
+        用途:
+            根据配置的重试次数、备用模型链，在生成失败或返回空值时进行自动重试和模型轮转，全部失败时降级生成确定性报告。
+
+        用法:
+            text, records, final_profile = self._generate_with_retry(...)
+
+        @Author: mosliu
+        """
         auto_retry_count = max(0, int(task.options_payload.get("report_retry_count", 2)))
         model_retry_count = max(0, int(task.options_payload.get("llm_model_retry_count", 2)))
         extra_fallback_profiles = list(task.options_payload.get("report_fallback_profile_names", []))
@@ -879,6 +1280,16 @@ class LLMReportExecutor(StepExecutor):
         return fallback_text, invocation_records, profile_chain[-1]
 
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行报告生成任务。
+
+        用途:
+            从任务的全部生成物中聚合所需信息，拼装提示词，调用大语言模型，并返回包含生成报告和 LLM 调用日志的结果。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         topic = task.input_payload.get("topic", "unknown topic")
         upstream = list(step.input_artifact_refs)
         source_artifacts = sorted(task.artifacts, key=lambda item: item.created_at)
@@ -968,7 +1379,28 @@ class LLMReportExecutor(StepExecutor):
 
 
 class DefaultStepExecutor(StepExecutor):
+    """默认步骤执行器。
+
+    用途:
+        用于对未匹配到特定执行器的节点进行模拟执行。
+
+    用法:
+        executor = DefaultStepExecutor()
+        result = executor.execute(task, step)
+
+    @Author: mosliu
+    """
     def execute(self, task: TaskRun, step: StepRun) -> StepExecutionResult:
+        """执行模拟步骤逻辑。
+
+        用途:
+            返回一个包含模拟完成信息的生成物，避免流程中断。
+
+        用法:
+            result = executor.execute(task, step)
+
+        @Author: mosliu
+        """
         return StepExecutionResult(
             artifact_type=f"{step.node_key}_result",
             artifact_level="derived",
