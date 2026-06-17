@@ -1,6 +1,9 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from llm_scheduling_management_system.config_loader import load_app_config
 from llm_scheduling_management_system.db import init_db
+from llm_scheduling_management_system.interfaces.http.routes.briefing import router as briefing_router
 from llm_scheduling_management_system.interfaces.http.routes.configuration import router as configuration_router
 from llm_scheduling_management_system.interfaces.http.routes.console import router as console_router
 from llm_scheduling_management_system.interfaces.http.routes.provider_catalog import router as provider_catalog_router
@@ -34,7 +37,24 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         version="0.1.0",
     )
+    app_config = load_app_config()
     register_access_control(app)
+    if app_config.api.cors.enabled:
+        logger.info(
+            "CORS enabled with origins={} origin_regex={}",
+            app_config.api.cors.allow_origins,
+            app_config.api.cors.allow_origin_regex,
+        )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=app_config.api.cors.allow_origins or ["*"],
+            allow_origin_regex=app_config.api.cors.allow_origin_regex,
+            allow_methods=app_config.api.cors.allow_methods,
+            allow_headers=app_config.api.cors.allow_headers,
+            expose_headers=app_config.api.cors.expose_headers,
+            allow_credentials=app_config.api.cors.allow_credentials,
+            max_age=app_config.api.cors.max_age,
+        )
 
     @app.get("/healthz")
     def healthcheck() -> dict[str, str]:
@@ -51,6 +71,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(catalog_router)
+    app.include_router(briefing_router)
     app.include_router(configuration_router)
     app.include_router(console_router)
     app.include_router(inspection_router)
@@ -62,3 +83,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

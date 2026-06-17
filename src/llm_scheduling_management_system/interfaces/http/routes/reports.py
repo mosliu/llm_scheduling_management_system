@@ -1,11 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session, sessionmaker
 
 from llm_scheduling_management_system.interfaces.http.dependencies import get_task_service
+from llm_scheduling_management_system.logging import logger
 from llm_scheduling_management_system.schemas.tasks import CreateTaskRequest, CreateTaskResponse, FinalReportResponse
 from llm_scheduling_management_system.services.task_service import TaskService
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
+
+
+def _run_task_in_background(bind, task_id: str) -> None:
+    """在独立数据库会话中后台执行指定任务。"""
+    background_session_factory = sessionmaker(bind=bind, autoflush=False, autocommit=False, class_=Session)
+    session = background_session_factory()
+    try:
+        TaskService(session).run_task(task_id)
+    except Exception:
+        session.rollback()
+        logger.exception("Background report execution failed for task {}", task_id)
+    finally:
+        session.close()
 
 
 class PublicOpinionReportRequest(BaseModel):
@@ -27,6 +42,7 @@ class PublicOpinionReportRequest(BaseModel):
     search_limit: int = 20
     report_retry_count: int = 2
     llm_model_retry_count: int = 2
+    auto_start: bool = False
     report_fallback_profile_names: list[str] = Field(
         default_factory=lambda: ["grok_reasoning_optional", "claude_opus_web_search_optional", "cheap_structured_cn"]
     )
@@ -39,6 +55,7 @@ class PublicOpinionReportRequest(BaseModel):
 @router.post("/public-opinion", response_model=CreateTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_public_opinion_report(
     request: PublicOpinionReportRequest,
+    background_tasks: BackgroundTasks,
     service: TaskService = Depends(get_task_service),
 ) -> CreateTaskResponse:
     """创建并提交舆情报告生成任务。
@@ -70,6 +87,8 @@ def create_public_opinion_report(
             },
         )
     )
+    if request.auto_start:
+        background_tasks.add_task(_run_task_in_background, service.session.get_bind(), task.id)
     return CreateTaskResponse(
         task_id=task.id,
         status=task.status,

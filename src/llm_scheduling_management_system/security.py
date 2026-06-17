@@ -360,6 +360,9 @@ def register_access_control(app) -> None:
 
         @Author: mosliu
         """
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         if request.url.path in {"/auth/login", "/auth/logout"}:
             return await call_next(request)
 

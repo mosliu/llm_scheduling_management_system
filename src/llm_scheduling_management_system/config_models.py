@@ -1,6 +1,50 @@
 from pydantic import BaseModel, Field
 
 
+class AppCORSConfig(BaseModel):
+    """HTTP CORS 配置。
+
+    用途:
+        控制浏览器跨域访问 API 的放行策略，支持单文件静态页通过 `file://` 或其他域访问服务端接口。
+
+    用法:
+        通过 `config/app.toml` 中的 `[api.cors]` 段进行配置。
+
+    @Author: mosliu
+    """
+    enabled: bool = False
+    allow_origins: list[str] = Field(default_factory=list)
+    allow_origin_regex: str | None = None
+    allow_methods: list[str] = Field(default_factory=lambda: ["*"])
+    allow_headers: list[str] = Field(default_factory=lambda: ["*"])
+    expose_headers: list[str] = Field(default_factory=list)
+    allow_credentials: bool = False
+    max_age: int = 600
+
+
+class AppAPIConfig(BaseModel):
+    """HTTP API 运行配置。"""
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+    cors: AppCORSConfig = Field(default_factory=AppCORSConfig)
+
+
+class AppConfig(BaseModel):
+    """应用级配置聚合。
+
+    用途:
+        读取 `config/app.toml` 中与 HTTP 服务相关的运行选项，目前主要用于管理 CORS。
+
+    用法:
+        app_config = load_app_config()
+
+    @Author: mosliu
+    """
+
+    api: AppAPIConfig = Field(default_factory=AppAPIConfig)
+
+
 class AccessCredentialConfig(BaseModel):
     """用户访问凭证配置。
 
@@ -232,3 +276,4 @@ class MCPConfig(BaseModel):
     @Author: mosliu
     """
     servers: list[MCPServerConfig] = Field(default_factory=list)
+

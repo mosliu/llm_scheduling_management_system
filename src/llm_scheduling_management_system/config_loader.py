@@ -2,7 +2,14 @@ from pathlib import Path
 import os
 import tomllib
 
-from llm_scheduling_management_system.config_models import AccessConfig, LLMConfig, MCPConfig, SearchConfig, SourceRegistryConfig
+from llm_scheduling_management_system.config_models import (
+    AccessConfig,
+    AppConfig,
+    LLMConfig,
+    MCPConfig,
+    SearchConfig,
+    SourceRegistryConfig,
+)
 
 
 def _load_toml(path: Path) -> dict:
@@ -53,6 +60,23 @@ def load_search_config(path: str | Path | None = None) -> SearchConfig:
     env_path = os.getenv("LSMS_SEARCH_CONFIG_PATH")
     config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/search.toml", "config/search.example.toml")
     return SearchConfig.model_validate(_load_toml(config_path))
+
+
+def load_app_config(path: str | Path | None = None) -> AppConfig:
+    """加载应用级 HTTP 配置。
+
+    用途:
+        读取 `config/app.toml` 或示例配置中的 API 运行参数，当前主要用于 CORS 配置。
+
+    用法:
+        app_config = load_app_config()
+
+    @Author: mosliu
+    """
+    env_path = os.getenv("LSMS_APP_CONFIG_PATH")
+    config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/app.toml", "config/app.example.toml")
+    return AppConfig.model_validate(_load_toml(config_path))
+
 
 
 def load_access_config(path: str | Path | None = None) -> AccessConfig:
@@ -117,3 +141,4 @@ def load_mcp_config(path: str | Path | None = None) -> MCPConfig:
     env_path = os.getenv("LSMS_MCP_CONFIG_PATH")
     config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/mcp.toml", "config/mcp.example.toml")
     return MCPConfig.model_validate(_load_toml(config_path))
+

@@ -10,6 +10,14 @@ timezone = "Asia/Shanghai"
 host = "0.0.0.0"
 port = 8000
 
+[api.cors]
+enabled = false
+allow_origins = ["*"]
+allow_methods = ["*"]
+allow_headers = ["*"]
+allow_credentials = false
+max_age = 600
+
 [runtime]
 default_task_queue = "workflow-default"
 default_artifact_ttl_days = 7
