@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-18
+
+### Changed
+
+- Normalized MySQL/MariaDB database URLs to use `charset=utf8mb4` for runtime and Alembic connections.
+- Updated externally sourced text fields to use MySQL `LONGTEXT` with `utf8mb4` collation, covering documents, artifacts, search hits, fetch invocations, LLM invocation traces, and step error messages.
+- Added startup schema reconciliation for legacy MySQL tables so API and worker startup can repair text column charset and type drift when migrations were not run first.
+
+### Fixed
+
+- Fixed worker crashes caused by MySQL rejecting Chinese or supplementary Unicode content in `documents.content_text`.
+- Prevented large fetched PDF/document bodies from failing on MySQL's 64 KiB `TEXT` limit.
+
+### Added
+
+- Added Alembic migration `20260618_003` to upgrade existing MySQL text columns to `LONGTEXT CHARACTER SET utf8mb4`.
+- Added database Unicode tests for MySQL DDL generation, DSN normalization, and long multilingual document persistence.
+
 ## 2026-05-21
 
 ### Added

@@ -237,6 +237,12 @@ mysql+pymysql://user:password@127.0.0.1:3306/llm_workflow?charset=utf8mb4
 postgresql+psycopg://user:password@127.0.0.1:5432/llm_workflow
 ```
 
+MySQL deployments should run `uv run alembic upgrade head` after updates. The runtime
+normalizes MySQL connections to `charset=utf8mb4`, and migrations keep externally
+sourced text fields such as documents, artifacts, prompts, responses, and search
+snippets on `LONGTEXT` with `utf8mb4` so multilingual and large PDF/document
+content can be stored without worker crashes.
+
 Current local runtime in this workspace has already been switched to MySQL through a local `.env` override.
 
 ## Running the System

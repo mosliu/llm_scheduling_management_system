@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from llm_scheduling_management_system.db import Base
+from llm_scheduling_management_system.db import Base, utf8mb4_longtext
 from llm_scheduling_management_system.domain.enums import ArtifactLevel, StepStatus, TaskStatus
 
 
@@ -54,7 +54,7 @@ class WorkflowTemplate(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(128), nullable=False, default="general")
-    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    description: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     latest_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -134,7 +134,7 @@ class StepRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -165,7 +165,7 @@ class Artifact(Base):
     schema_name: Mapped[str] = mapped_column(String(128), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
     content_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    content_text: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    content_text: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     blob_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -215,7 +215,7 @@ class SearchInvocation(Base):
     step_run_id: Mapped[str] = mapped_column(ForeignKey("step_runs.id"), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(128), nullable=False)
     provider_vendor: Mapped[str] = mapped_column(String(64), nullable=False)
-    query_text: Mapped[str] = mapped_column(Text(), nullable=False)
+    query_text: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
     result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     request_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     response_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -240,8 +240,8 @@ class FetchInvocation(Base):
     step_run_id: Mapped[str] = mapped_column(ForeignKey("step_runs.id"), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(128), nullable=False)
     provider_vendor: Mapped[str] = mapped_column(String(64), nullable=False)
-    url: Mapped[str] = mapped_column(Text(), nullable=False)
-    title: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    url: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
+    title: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     request_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     response_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -267,8 +267,8 @@ class LLMInvocation(Base):
     provider_type: Mapped[str] = mapped_column(String(64), nullable=False)
     profile_name: Mapped[str] = mapped_column(String(128), nullable=False)
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    prompt_text: Mapped[str] = mapped_column(Text(), nullable=False)
-    response_text: Mapped[str] = mapped_column(Text(), nullable=False)
+    prompt_text: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
+    response_text: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
     request_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     response_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -337,13 +337,13 @@ class SearchHitRecord(Base):
     task_run_id: Mapped[str] = mapped_column(ForeignKey("task_runs.id"), nullable=False)
     step_run_id: Mapped[str] = mapped_column(ForeignKey("step_runs.id"), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    query_text: Mapped[str] = mapped_column(Text(), nullable=False)
-    title: Mapped[str] = mapped_column(Text(), nullable=False)
+    query_text: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
+    title: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
     source_domain: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str] = mapped_column(String(64), nullable=False)
     region_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     publisher_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    snippet: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    snippet: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     published_at_utc: Mapped[str | None] = mapped_column(String(64), nullable=True)
     extra_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -366,17 +366,17 @@ class DocumentRecord(Base):
     task_run_id: Mapped[str] = mapped_column(ForeignKey("task_runs.id"), nullable=False)
     step_run_id: Mapped[str] = mapped_column(ForeignKey("step_runs.id"), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    url: Mapped[str] = mapped_column(Text(), nullable=False)
-    canonical_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    title: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    author: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    url: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
+    canonical_url: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
+    title: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
+    author: Mapped[str | None] = mapped_column(utf8mb4_longtext(), nullable=True)
     language: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     region_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     publisher_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     published_at_utc: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    content_text: Mapped[str] = mapped_column(Text(), nullable=False)
+    content_text: Mapped[str] = mapped_column(utf8mb4_longtext(), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     extra_metadata: Mapped[dict] = mapped_column(JSON(), nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

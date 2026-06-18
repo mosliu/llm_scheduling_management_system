@@ -189,6 +189,15 @@ Recommended `artifact_level` values:
 - `derived`
 - `final`
 
+Storage note:
+
+- Long external text fields such as `artifact.content_text`, `document.content_text`,
+  search snippets, fetch titles, and LLM prompt/response traces must support large
+  multilingual payloads. MySQL implementations should use `LONGTEXT` with
+  `utf8mb4` for these fields rather than default `TEXT`, because fetched PDFs and
+  web pages can exceed 64 KiB and may contain Chinese or supplementary Unicode
+  characters.
+
 ## 4.6 artifact_lineage
 
 Purpose:
