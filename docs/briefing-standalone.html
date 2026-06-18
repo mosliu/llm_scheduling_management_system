@@ -333,6 +333,42 @@
       font-size: 12px;
       line-height: 1.6;
     }
+    .limit-field {
+      min-width: 180px;
+    }
+    .limit-field input {
+      max-width: 180px;
+    }
+    .step-metrics {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      display: grid;
+      gap: 7px;
+    }
+    .metric-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .metric-row strong {
+      color: var(--ink);
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    .metric-empty {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
     @media (max-width: 1100px) {
       .hero, .split, .status-grid { grid-template-columns: 1fr; }
       .span-8, .span-6, .span-4, .span-12 { grid-column: span 12; }
@@ -434,9 +470,22 @@
                 <label>勾选搜索项</label>
                 <div class="mini-note">至少选择一个。默认会读取当前系统里已启用的搜索提供方。</div>
               </div>
-              <button class="secondary" @click="loadProviders" :disabled="loadingProviders">
-                {{ loadingProviders ? '读取中...' : '刷新搜索项' }}
-              </button>
+              <div class="toolbar" style="align-items:flex-end;">
+                <div class="limit-field">
+                  <label for="searchLimit">搜索数量</label>
+                  <input
+                    id="searchLimit"
+                    v-model.number="form.search_limit"
+                    type="number"
+                    min="1"
+                    step="1"
+                  />
+                  <div class="mini-note">默认 20，每渠道</div>
+                </div>
+                <button class="secondary" @click="loadProviders" :disabled="loadingProviders">
+                  {{ loadingProviders ? '读取中...' : '刷新搜索项' }}
+                </button>
+              </div>
             </div>
             <div class="chip-grid">
               <label class="check-card" v-for="provider in searchProviders" :key="provider.name">
@@ -516,6 +565,37 @@
               <div class="mini-note">内部标识：{{ step.node_key }}</div>
               <div class="mini-note">进度 {{ step.progress.toFixed(0) }}% · 缓存 {{ step.cache_hit ? '命中' : '未命中' }}</div>
               <div class="mini-note" v-if="step.error_message">异常：{{ step.error_message }}</div>
+              <div class="step-metrics" v-if="shouldShowSearchMetrics(step)">
+                <div class="metric-title">搜索结果统计</div>
+                <div class="metric-row">
+                  <span>每渠道上限</span>
+                  <strong>{{ taskSearchLimit }} 条</strong>
+                </div>
+                <div class="metric-row" v-for="item in searchProviderSummaries" :key="item.name">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.count }} 条</strong>
+                </div>
+                <div class="metric-empty" v-if="!searchProviderSummaries.length">
+                  尚未读取到搜索调用记录。
+                </div>
+                <div class="metric-empty" v-if="metricsError">{{ metricsError }}</div>
+              </div>
+              <div class="step-metrics" v-if="shouldShowFetchMetrics(step)">
+                <div class="metric-title">正文抓取统计</div>
+                <div class="metric-row">
+                  <span>抓取方式</span>
+                  <strong>{{ fetchMethodText }}</strong>
+                </div>
+                <div class="metric-row">
+                  <span>抓取调用</span>
+                  <strong>{{ fetchInvocationCount }} 次</strong>
+                </div>
+                <div class="metric-row">
+                  <span>正文入库</span>
+                  <strong>{{ fetchedDocumentCount }} 篇</strong>
+                </div>
+                <div class="metric-empty" v-if="metricsError">{{ metricsError }}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -561,7 +641,9 @@
       apiPassword: 'briefing.apiPassword',
       taskId: 'briefing.taskId',
     };
+    const DEFAULT_SEARCH_LIMIT = 20;
     const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_retry']);
+    const COMPLETED_STEP_STATUSES = new Set(['succeeded', 'cached', 'partial_failed', 'failed', 'skipped']);
     const PROVIDER_LABELS = {
       exa_search: 'Exa 搜索',
       tavily_search: 'Tavily 搜索',
@@ -569,6 +651,12 @@
       gpt_search: 'GPT 搜索',
       firecrawl_search: 'Firecrawl 搜索',
       tinyfish_search: 'Tinyfish 搜索',
+    };
+    const FETCH_PROVIDER_LABELS = {
+      exa_contents: 'Exa Contents',
+      firecrawl_scrape: 'Firecrawl Scrape',
+      tavily_extract: 'Tavily Extract',
+      tinyfish_fetch: 'Tinyfish Fetch',
     };
     const STEP_LABELS = {
       request_intake: '接收需求',
@@ -629,9 +717,16 @@
           taskId: storedTaskId,
           task: null,
           report: null,
+          taskMetrics: {
+            searchInvocations: [],
+            fetchInvocations: [],
+            stats: null,
+          },
+          metricsError: '',
           lastUpdatedText: '',
           form: {
             topic: '',
+            search_limit: DEFAULT_SEARCH_LIMIT,
             search_provider_names: [],
           },
           searchProviders: [],
@@ -639,7 +734,11 @@
       },
       computed: {
         canSubmit() {
-          return this.form.topic.trim().length > 0 && this.form.search_provider_names.length > 0;
+          return (
+            this.form.topic.trim().length > 0
+            && this.form.search_provider_names.length > 0
+            && this.normalizedSearchLimit() > 0
+          );
         },
         progressWidth() {
           if (!this.task) {
@@ -648,8 +747,67 @@
           const value = Number(this.task.progress || 0);
           return `${Math.max(0, Math.min(100, value))}%`;
         },
+        taskSearchLimit() {
+          return Number(this.task?.options_payload?.search_limit || this.form.search_limit || DEFAULT_SEARCH_LIMIT);
+        },
+        searchProviderSummaries() {
+          const summaries = new Map();
+          for (const invocation of this.taskMetrics.searchInvocations || []) {
+            const name = invocation.provider_name || 'unknown_search';
+            const existing = summaries.get(name) || {
+              name,
+              vendor: invocation.provider_vendor || '',
+              count: 0,
+            };
+            existing.count += Number(invocation.result_count || 0);
+            summaries.set(name, existing);
+          }
+          return Array.from(summaries.values()).map(item => ({
+            ...item,
+            label: this.providerDisplayName(item.name, item.vendor),
+          }));
+        },
+        fetchProviderSummaries() {
+          const summaries = new Map();
+          for (const invocation of this.taskMetrics.fetchInvocations || []) {
+            const name = invocation.provider_name || 'unknown_fetch';
+            const existing = summaries.get(name) || {
+              name,
+              vendor: invocation.provider_vendor || '',
+              calls: 0,
+            };
+            existing.calls += 1;
+            summaries.set(name, existing);
+          }
+          return Array.from(summaries.values()).map(item => ({
+            ...item,
+            label: this.providerDisplayName(item.name, item.vendor),
+          }));
+        },
+        fetchMethodText() {
+          if (this.fetchProviderSummaries.length) {
+            return this.fetchProviderSummaries
+              .map(item => item.calls > 1 ? `${item.label} × ${item.calls}` : item.label)
+              .join('、');
+          }
+          const configured = this.task?.options_payload?.fetch_provider_name;
+          return configured ? this.providerDisplayName(configured) : '尚未记录';
+        },
+        fetchInvocationCount() {
+          return (this.taskMetrics.fetchInvocations || []).length;
+        },
+        fetchedDocumentCount() {
+          return Number(this.taskMetrics.stats?.document_count || 0);
+        },
       },
       methods: {
+        normalizedSearchLimit() {
+          const value = Number(this.form.search_limit || DEFAULT_SEARCH_LIMIT);
+          if (!Number.isFinite(value) || value < 1) {
+            return 0;
+          }
+          return Math.floor(value);
+        },
         normalizedApiBase(rawValue) {
           const value = (rawValue || '').trim();
           return value.replace(/\/+$/, '');
@@ -749,8 +907,15 @@
         humanizeStep(stepKey) {
           return STEP_LABELS[stepKey] || stepKey || '未命名步骤';
         },
+        providerDisplayName(name, vendor = '') {
+          const label = PROVIDER_LABELS[name] || FETCH_PROVIDER_LABELS[name] || name || '未知渠道';
+          if (!vendor || vendor === 'unknown') {
+            return label;
+          }
+          return `${label}（${vendor}）`;
+        },
         formatProvider(provider) {
-          const displayName = PROVIDER_LABELS[provider.name] || provider.name;
+          const displayName = this.providerDisplayName(provider.name);
           const vendorLabel = provider.vendor ? `来源：${provider.vendor}` : '来源未标注';
           return {
             ...provider,
@@ -782,6 +947,47 @@
             throw new Error(message);
           }
           return payload;
+        },
+        resetTaskMetrics() {
+          this.taskMetrics = {
+            searchInvocations: [],
+            fetchInvocations: [],
+            stats: null,
+          };
+          this.metricsError = '';
+        },
+        isStepCompleted(step) {
+          return step && COMPLETED_STEP_STATUSES.has(step.status);
+        },
+        shouldShowSearchMetrics(step) {
+          return step.node_key === 'search_fanout' && this.isStepCompleted(step);
+        },
+        shouldShowFetchMetrics(step) {
+          return step.node_key === 'fetch_documents' && this.isStepCompleted(step);
+        },
+        async refreshTaskMetrics() {
+          if (!this.taskId) {
+            this.resetTaskMetrics();
+            return;
+          }
+          const [searchResult, fetchResult, statsResult] = await Promise.allSettled([
+            this.request(`/api/v1/tasks/${this.taskId}/search-invocations`),
+            this.request(`/api/v1/tasks/${this.taskId}/fetch-invocations`),
+            this.request(`/api/v1/tasks/${this.taskId}/stats`),
+          ]);
+          if (searchResult.status === 'fulfilled') {
+            this.taskMetrics.searchInvocations = Array.isArray(searchResult.value) ? searchResult.value : [];
+          }
+          if (fetchResult.status === 'fulfilled') {
+            this.taskMetrics.fetchInvocations = Array.isArray(fetchResult.value) ? fetchResult.value : [];
+          }
+          if (statsResult.status === 'fulfilled') {
+            this.taskMetrics.stats = statsResult.value || null;
+          }
+          const failed = [searchResult, fetchResult, statsResult]
+            .filter(item => item.status === 'rejected')
+            .map(item => item.reason?.message || '未知错误');
+          this.metricsError = failed.length ? `统计读取失败：${failed.join('；')}` : '';
         },
         async loadProviders() {
           this.loadingProviders = true;
@@ -824,14 +1030,22 @@
             this.errorMessage = '请至少勾选一个搜索项。';
             return;
           }
+          const searchLimit = this.normalizedSearchLimit();
+          if (!searchLimit) {
+            this.errorMessage = '搜索数量必须是大于 0 的整数。';
+            return;
+          }
+          this.form.search_limit = searchLimit;
           this.submitting = true;
           this.errorMessage = '';
           this.infoMessage = '';
           this.report = null;
+          this.resetTaskMetrics();
           try {
             const payload = {
               topic: this.form.topic.trim(),
               search_provider_names: [...this.form.search_provider_names],
+              search_limit: searchLimit,
               execution_engine: 'native',
               auto_start: true,
             };
@@ -859,6 +1073,7 @@
           this.taskId = this.taskLookupId.trim();
           localStorage.setItem(STORAGE_KEYS.taskId, this.taskId);
           this.report = null;
+          this.resetTaskMetrics();
           await this.refreshTask();
           if (this.task && ACTIVE_STATUSES.has(this.task.status)) {
             this.startPolling();
@@ -884,6 +1099,7 @@
           this.refreshing = true;
           try {
             this.task = await this.request(`/api/v1/tasks/${this.taskId}`);
+            await this.refreshTaskMetrics();
             this.lastUpdatedText = new Date().toLocaleString('zh-CN');
             if (ACTIVE_STATUSES.has(this.task.status)) {
               this.infoMessage = `任务正在执行：${this.statusLabel(this.task.status)}。页面会自动继续刷新。`;
@@ -930,6 +1146,7 @@
           this.taskLookupId = '';
           this.task = null;
           this.report = null;
+          this.resetTaskMetrics();
           this.lastUpdatedText = '';
           localStorage.removeItem(STORAGE_KEYS.taskId);
           this.infoMessage = '当前任务已清空。';

@@ -17,6 +17,8 @@
 
 - Added Alembic migration `20260618_003` to upgrade existing MySQL text columns to `LONGTEXT CHARACTER SET utf8mb4`.
 - Added database Unicode tests for MySQL DDL generation, DSN normalization, and long multilingual document persistence.
+- Added an explicit `/briefing` search result limit control, defaulting to 20 results per selected search provider.
+- Added `/briefing` completed-step metrics for per-provider search result counts, fetch method, fetch call count, and fetched document count.
 
 ## 2026-05-21
 
