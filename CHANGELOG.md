@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Deduplicated cross-provider search hits by normalized URL while ignoring common tracking query parameters.
+- Prioritized direct search API hits over model-embedded search hits when multiple providers return the same URL.
 - Normalized MySQL/MariaDB database URLs to use `charset=utf8mb4` for runtime and Alembic connections.
 - Updated externally sourced text fields to use MySQL `LONGTEXT` with `utf8mb4` collation, covering documents, artifacts, search hits, fetch invocations, LLM invocation traces, and step error messages.
 - Added startup schema reconciliation for legacy MySQL tables so API and worker startup can repair text column charset and type drift when migrations were not run first.
@@ -12,11 +14,15 @@
 
 - Fixed worker crashes caused by MySQL rejecting Chinese or supplementary Unicode content in `documents.content_text`.
 - Prevented large fetched PDF/document bodies from failing on MySQL's 64 KiB `TEXT` limit.
+- Fixed official-response over-counting by deduplicating fallback documents and avoiding double-counting fetched and merged copies of the same URL.
 
 ### Added
 
 - Added Alembic migration `20260618_003` to upgrade existing MySQL text columns to `LONGTEXT CHARACTER SET utf8mb4`.
 - Added database Unicode tests for MySQL DDL generation, DSN normalization, and long multilingual document persistence.
+- Added a `/briefing` China-sources-only checkbox wired to report `source_policy.include_regions = ["cn"]`.
+- Added source-region filtering across search fanout, document fetch, result merge, and normalize/filter artifacts, with filter metadata preserved for audit.
+- Added `.cn` domain inference in the source registry so unregistered Chinese domains can be retained by China-only filtering.
 - Added an explicit `/briefing` search result limit control, defaulting to 20 results per selected search provider.
 - Added `/briefing` completed-step metrics for per-provider search result counts, fetch method, fetch call count, and fetched document count.
 

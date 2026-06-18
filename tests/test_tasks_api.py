@@ -2,6 +2,7 @@ from llm_scheduling_management_system.execution.executors import (
     ExtractOfficialResponsesExecutor,
     FetchDocumentsExecutor,
     LLMReportExecutor,
+    MergeSearchResultsExecutor,
     SearchFanoutExecutor,
 )
 from llm_scheduling_management_system.providers.types import FetchDocument, SearchHit, SearchResultBundle
@@ -18,15 +19,21 @@ class _StubSourceRegistry:
 
 
 class _StubSearchProvider:
-    def __init__(self, name: str, hits: list[SearchHit]) -> None:
+    def __init__(self, name: str, hits: list[SearchHit], provider_type: str = "search_with_inline_content") -> None:
         self.name = name
         self._hits = hits
+        self.provider_type = provider_type
 
     def search(self, query: str, *, limit: int = 10) -> SearchResultBundle:
         return SearchResultBundle(
             provider=self.name,
             hits=self._hits[:limit],
-            request_metadata={"vendor": self.name, "simulated": False, "limit": limit},
+            request_metadata={
+                "vendor": self.name,
+                "provider_type": self.provider_type,
+                "simulated": False,
+                "limit": limit,
+            },
         )
 
 
@@ -1106,6 +1113,69 @@ def test_search_fanout_deduplicates_hits_by_url_and_merges_fields():
     assert hits[0]["author"] == "Author A"
 
 
+def test_search_fanout_deduplicates_tracking_urls_and_prefers_search_api_result():
+    providers = {
+        "model_search": _StubSearchProvider(
+            "model_search",
+            [
+                SearchHit(
+                    provider="model_search",
+                    title="Model generated duplicate headline",
+                    url="https://example.com/shared-article?utm_source=model",
+                    source_domain="example.com",
+                    source_type="web_search",
+                    query="q",
+                    published_at_utc="2026-05-01",
+                    snippet="model snippet with extra detail",
+                    metadata={"publisher": "Model Publisher"},
+                )
+            ],
+            provider_type="model_embedded_search",
+        ),
+        "search_api": _StubSearchProvider(
+            "search_api",
+            [
+                SearchHit(
+                    provider="search_api",
+                    title="API duplicate headline",
+                    url="https://example.com/shared-article?ref=api",
+                    source_domain="example.com",
+                    source_type="mainstream_media",
+                    query="q",
+                    published_at_utc="2026-05-01",
+                    snippet="api snippet",
+                    metadata={"author": "API Reporter", "publisher": "API Publisher"},
+                )
+            ],
+            provider_type="search_with_inline_content",
+        ),
+    }
+    executor = SearchFanoutExecutor(search_provider_factory=_StubSearchProviderFactory(providers))
+    executor.source_registry = _StubSourceRegistry()
+    task = type(
+        "Task",
+        (),
+        {
+            "input_payload": {"topic": "q"},
+            "options_payload": {"search_provider_names": ["model_search", "search_api"], "search_limit": 5},
+        },
+    )()
+    step = type("Step", (), {"node_key": "search_fanout"})()
+
+    result = executor.execute(task, step)
+    hits = result.content_json["hits"]
+
+    assert len(hits) == 1
+    assert hits[0]["provider"] == "search_api"
+    assert hits[0]["provider_type"] == "search_with_inline_content"
+    assert hits[0]["source_url"] == "https://example.com/shared-article?ref=api"
+    assert hits[0]["search_dedup_url_key"] == "https://example.com/shared-article"
+    assert set(hits[0]["matched_provider_names"]) == {"model_search", "search_api"}
+    assert set(hits[0]["matched_provider_types"]) == {"model_embedded_search", "search_with_inline_content"}
+    assert hits[0]["duplicate_count"] == 2
+    assert hits[0]["author"] == "API Reporter"
+
+
 def test_fetch_documents_deduplicates_documents_by_canonical_url():
     executor = FetchDocumentsExecutor(search_provider_factory=_StubFetchFactory())
     executor.source_registry = _StubSourceRegistry()
@@ -1169,6 +1239,70 @@ def test_fetch_documents_deduplicates_documents_by_canonical_url():
     assert docs[0]["canonical_url"] == "https://example.com/shared-article"
     assert set(docs[0]["metadata"]["matched_provider_names"]) == {"provider_a", "provider_b"}
     assert docs[0]["metadata"]["duplicate_count"] == 2
+
+
+def test_merge_search_results_can_keep_only_china_sources():
+    executor = MergeSearchResultsExecutor()
+    artifact = type(
+        "Artifact",
+        (),
+        {
+            "id": "art_docs",
+            "schema_name": "fetched_documents_bundle",
+            "content_json": {
+                "documents": [
+                    {
+                        "provider": "provider_cn",
+                        "canonical_url": "https://example.cn/story",
+                        "title": "China source",
+                        "source_domain": "example.cn",
+                        "source_type": "mainstream_media",
+                        "region_hint": "cn",
+                        "publisher_type": "media",
+                        "published_at_utc": "2026-05-01",
+                        "language": "zh",
+                        "author": "Reporter CN",
+                        "content_text": "中国来源正文",
+                    },
+                    {
+                        "provider": "provider_overseas",
+                        "canonical_url": "https://example.com/story",
+                        "title": "Overseas source",
+                        "source_domain": "example.com",
+                        "source_type": "mainstream_media",
+                        "region_hint": "overseas",
+                        "publisher_type": "media",
+                        "published_at_utc": "2026-05-01",
+                        "language": "en",
+                        "author": "Reporter Overseas",
+                        "content_text": "Overseas source text",
+                    },
+                ]
+            },
+        },
+    )()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_x",
+            "options_payload": {"source_policy": {"include_regions": ["cn"]}},
+            "artifacts": [artifact],
+        },
+    )()
+    step = type("Step", (), {"input_artifact_refs": ["art_docs"], "node_key": "merge_search_results"})()
+
+    result = executor.execute(task, step)
+    documents = result.content_json["documents"]
+
+    assert len(documents) == 1
+    assert documents[0]["region_hint"] == "cn"
+    assert documents[0]["url"] == "https://example.cn/story"
+    assert result.content_json["filtered_out_document_count"] == 1
+    assert result.content_json["source_filter_policy"] == {
+        "include_regions": ["cn"],
+        "keep_china_sources_only": True,
+    }
 
 
 def test_llm_report_executor_uses_fallback_profile_after_retries():
@@ -1319,6 +1453,65 @@ def test_extract_official_responses_includes_response_content_and_key_points():
     assert responses[0]["response_excerpt"]
     assert responses[0]["response_content"]
     assert responses[0]["response_key_points"]
+
+
+def test_extract_official_responses_deduplicates_fallback_documents_by_url():
+    executor = ExtractOfficialResponsesExecutor()
+    fetched_artifact = type(
+        "Artifact",
+        (),
+        {
+            "id": "art_fetched",
+            "schema_name": "fetched_documents_bundle",
+            "content_json": {
+                "documents": [
+                    {
+                        "title": "旧抓取官方通报",
+                        "canonical_url": "https://example.com/official",
+                        "url": "https://example.com/official?utm_source=fetch",
+                        "source_domain": "example.com",
+                        "published_at_utc": "2026-05-08",
+                        "content_text": "官方通报旧正文",
+                    }
+                ]
+            },
+        },
+    )()
+    merged_artifact = type(
+        "Artifact",
+        (),
+        {
+            "id": "art_merged",
+            "schema_name": "merged_results_bundle",
+            "content_json": {
+                "documents": [
+                    {
+                        "title": "合并官方通报",
+                        "url": "https://example.com/official",
+                        "source_domain": "example.com",
+                        "published_at_utc": "2026-05-08",
+                        "content_preview": "官方通报新正文",
+                    }
+                ]
+            },
+        },
+    )()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_official_dedup",
+            "artifacts": [fetched_artifact, merged_artifact],
+        },
+    )()
+    step = type("Step", (), {"node_key": "extract_official_responses", "input_artifact_refs": []})()
+
+    result = executor.execute(task, step)
+    responses = result.content_json["official_responses"]
+
+    assert len(responses) == 1
+    assert responses[0]["title"] == "合并官方通报"
+    assert responses[0]["url"] == "https://example.com/official"
 
 
 def test_repeated_search_task_uses_cached_search_fanout(client):

@@ -498,6 +498,16 @@
               </label>
             </div>
           </div>
+
+          <div class="span-12">
+            <label class="check-card">
+              <input type="checkbox" v-model="form.keep_china_sources_only" />
+              <div>
+                <strong>只保留中国来源</strong>
+                <span>开启后，检索和合并结果只保留标记为中国来源的内容，海外或未知来源不会进入后续报告。</span>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div class="actions" style="margin-top:18px;">
@@ -728,6 +738,7 @@
             topic: '',
             search_limit: DEFAULT_SEARCH_LIMIT,
             search_provider_names: [],
+            keep_china_sources_only: false,
           },
           searchProviders: [],
         };
@@ -1046,6 +1057,7 @@
               topic: this.form.topic.trim(),
               search_provider_names: [...this.form.search_provider_names],
               search_limit: searchLimit,
+              keep_china_sources_only: this.form.keep_china_sources_only,
               execution_engine: 'native',
               auto_start: true,
             };

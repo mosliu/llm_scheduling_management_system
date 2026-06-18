@@ -25,7 +25,13 @@ class SourceRegistry:
         @Author: mosliu
         """
         self.config = load_source_registry_config()
-        self._by_domain = {entry.domain: entry for entry in self.config.sources}
+        self._by_domain = {self._normalize_domain(entry.domain): entry for entry in self.config.sources}
+
+    @staticmethod
+    def _normalize_domain(domain: str) -> str:
+        """规范化域名用于 registry 查询。"""
+
+        return (domain or "").strip().lower().removeprefix("www.")
 
     def lookup(self, domain: str) -> dict:
         """根据域名检索该数据源的信息。
@@ -44,8 +50,17 @@ class SourceRegistry:
 
         @Author: mosliu
         """
-        entry = self._by_domain.get(domain)
+        normalized_domain = self._normalize_domain(domain)
+        entry = self._by_domain.get(normalized_domain)
         if entry is None:
+            if normalized_domain.endswith(".cn"):
+                official = normalized_domain == "gov.cn" or normalized_domain.endswith(".gov.cn")
+                return {
+                    "region_hint": "cn",
+                    "publisher_type": "government" if official else "unknown",
+                    "language": "zh",
+                    "official": official,
+                }
             return {
                 "region_hint": "unknown",
                 "publisher_type": "unknown",

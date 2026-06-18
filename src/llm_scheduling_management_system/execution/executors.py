@@ -4,7 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from llm_scheduling_management_system.domain.models import Artifact, StepRun, TaskRun
 from llm_scheduling_management_system.execution.types import FetchInvocationRecord, LLMInvocationRecord, SearchInvocationRecord, StepExecutionResult, ToolInvocationRecord
@@ -14,6 +14,20 @@ from llm_scheduling_management_system.source_registry import SourceRegistry
 
 
 DATE_PATTERN = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
+CHINA_REGION_HINT = "cn"
+SEARCH_API_PROVIDER_TYPES = {"search_with_inline_content", "search_only"}
+MODEL_EMBEDDED_SEARCH_PROVIDER_TYPE = "model_embedded_search"
+TRACKING_QUERY_KEYS = {
+    "fbclid",
+    "gclid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "ref",
+    "ref_src",
+    "spm",
+    "src",
+}
 
 
 def _find_upstream_artifacts(task: TaskRun, step: StepRun) -> list[Artifact]:
@@ -113,6 +127,33 @@ def _canonicalize_url(url: str | None) -> str:
     return f"{scheme}://{netloc}{path}" + (f"?{query}" if query else "")
 
 
+def _search_dedup_url_key(url: str | None) -> str:
+    """生成搜索阶段跨渠道 URL 去重键，忽略常见追踪参数。"""
+
+    if not url:
+        return ""
+    candidate = url.strip()
+    if not candidate:
+        return ""
+    parsed = urlparse(candidate)
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc.lower()
+    if netloc.endswith(":80") and scheme == "http":
+        netloc = netloc[:-3]
+    if netloc.endswith(":443") and scheme == "https":
+        netloc = netloc[:-4]
+    path = parsed.path or "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    query_pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_QUERY_KEYS
+    ]
+    query = urlencode(sorted(query_pairs), doseq=True)
+    return f"{scheme}://{netloc}{path}" + (f"?{query}" if query else "")
+
+
 def _choose_longer_text(left: str | None, right: str | None) -> str | None:
     """选择较长的文本。
 
@@ -133,6 +174,94 @@ def _choose_longer_text(left: str | None, right: str | None) -> str | None:
     return right if len(right) > len(left) else left
 
 
+def _search_provider_priority(provider_type: str | None) -> int:
+    """搜索命中主记录优先级，数值越小越优先。"""
+
+    if provider_type in SEARCH_API_PROVIDER_TYPES:
+        return 0
+    if provider_type == MODEL_EMBEDDED_SEARCH_PROVIDER_TYPE:
+        return 1
+    return 2
+
+
+def _prefer_incoming_hit(existing: dict, incoming: dict) -> bool:
+    """判断重复搜索命中合并时是否应将 incoming 作为主记录。"""
+
+    existing_priority = _search_provider_priority(existing.get("provider_type"))
+    incoming_priority = _search_provider_priority(incoming.get("provider_type"))
+    return incoming_priority < existing_priority
+
+
+def _source_policy_from_task(task: TaskRun) -> dict:
+    """从任务选项中读取来源过滤策略。"""
+
+    policy = task.options_payload.get("source_policy", {})
+    return policy if isinstance(policy, dict) else {}
+
+
+def _source_policy_include_regions(policy: dict) -> set[str]:
+    """解析来源策略中的地域白名单。"""
+
+    if any(
+        bool(policy.get(key))
+        for key in ("keep_china_sources_only", "china_sources_only", "only_china_sources")
+    ):
+        return {CHINA_REGION_HINT}
+    include_regions = policy.get("include_regions", [])
+    if isinstance(include_regions, str):
+        include_regions = [include_regions]
+    return {str(region).strip().lower() for region in include_regions if str(region).strip()}
+
+
+def _source_policy_filter_metadata(policy: dict) -> dict:
+    """生成可写入 artifact 的来源过滤摘要。"""
+
+    include_regions = sorted(_source_policy_include_regions(policy))
+    return {
+        "include_regions": include_regions,
+        "keep_china_sources_only": include_regions == [CHINA_REGION_HINT],
+    }
+
+
+def _filter_items_by_source_policy(items: list[dict], policy: dict) -> tuple[list[dict], int]:
+    """按来源地域策略过滤记录。"""
+
+    include_regions = _source_policy_include_regions(policy)
+    if not include_regions:
+        return list(items), 0
+    filtered = [
+        item
+        for item in items
+        if str(item.get("region_hint") or "").strip().lower() in include_regions
+    ]
+    return filtered, len(items) - len(filtered)
+
+
+def _document_dedup_key(document: dict) -> str:
+    """生成文档级去重键。"""
+
+    url_key = _canonicalize_url(document.get("canonical_url") or document.get("url"))
+    if url_key:
+        return url_key
+    title = (document.get("title") or "").strip().lower()
+    return f"title:{title}" if title else ""
+
+
+def _deduplicate_document_records(documents: list[dict]) -> list[dict]:
+    """按 URL/标题对文档记录去重，保留首次出现的记录。"""
+
+    deduplicated = []
+    seen_keys: set[str] = set()
+    for document in documents:
+        key = _document_dedup_key(document)
+        if key:
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+        deduplicated.append(document)
+    return deduplicated
+
+
 def _merge_hit_records(existing: dict, incoming: dict) -> dict:
     """合并搜索命中（Hit）记录。
 
@@ -144,28 +273,43 @@ def _merge_hit_records(existing: dict, incoming: dict) -> dict:
 
     @Author: mosliu
     """
-    merged = dict(existing)
-    merged["title"] = _choose_longer_text(existing.get("title"), incoming.get("title")) or ""
-    merged["snippet"] = _choose_longer_text(existing.get("snippet"), incoming.get("snippet"))
-    merged["published_at_utc"] = existing.get("published_at_utc") or incoming.get("published_at_utc")
-    merged["author"] = existing.get("author") or incoming.get("author")
-    merged["publisher"] = existing.get("publisher") or incoming.get("publisher")
-    merged["language"] = existing.get("language") or incoming.get("language")
-    merged["region_hint"] = existing.get("region_hint") or incoming.get("region_hint")
-    merged["publisher_type"] = existing.get("publisher_type") or incoming.get("publisher_type")
-    merged["source_type"] = existing.get("source_type") or incoming.get("source_type")
+    primary = incoming if _prefer_incoming_hit(existing, incoming) else existing
+    secondary = existing if primary is incoming else incoming
+    merged = dict(primary)
+    merged["title"] = _choose_longer_text(primary.get("title"), secondary.get("title")) or ""
+    merged["snippet"] = _choose_longer_text(primary.get("snippet"), secondary.get("snippet"))
+    merged["published_at_utc"] = primary.get("published_at_utc") or secondary.get("published_at_utc")
+    merged["author"] = primary.get("author") or secondary.get("author")
+    merged["publisher"] = primary.get("publisher") or secondary.get("publisher")
+    merged["language"] = primary.get("language") or secondary.get("language")
+    merged["region_hint"] = primary.get("region_hint") or secondary.get("region_hint")
+    merged["publisher_type"] = primary.get("publisher_type") or secondary.get("publisher_type")
+    merged["source_type"] = primary.get("source_type") or secondary.get("source_type")
+    merged["provider_type"] = primary.get("provider_type") or secondary.get("provider_type")
 
     matched_provider_names = list(merged.get("matched_provider_names", []))
-    provider = incoming.get("provider")
-    if provider and provider not in matched_provider_names:
-        matched_provider_names.append(provider)
+    for provider in [existing.get("provider"), incoming.get("provider")]:
+        if provider and provider not in matched_provider_names:
+            matched_provider_names.append(provider)
     merged["matched_provider_names"] = matched_provider_names
 
+    matched_provider_types = list(merged.get("matched_provider_types", []))
+    for provider_type in [existing.get("provider_type"), incoming.get("provider_type")]:
+        if provider_type and provider_type not in matched_provider_types:
+            matched_provider_types.append(provider_type)
+    merged["matched_provider_types"] = matched_provider_types
+
     matched_source_domains = list(merged.get("matched_source_domains", []))
-    source_domain = incoming.get("source_domain")
-    if source_domain and source_domain not in matched_source_domains:
-        matched_source_domains.append(source_domain)
+    for source_domain in [existing.get("source_domain"), incoming.get("source_domain")]:
+        if source_domain and source_domain not in matched_source_domains:
+            matched_source_domains.append(source_domain)
     merged["matched_source_domains"] = matched_source_domains
+
+    source_urls = list(merged.get("matched_source_urls", []))
+    for source_url in [existing.get("source_url"), incoming.get("source_url")]:
+        if source_url and source_url not in source_urls:
+            source_urls.append(source_url)
+    merged["matched_source_urls"] = source_urls
     merged["duplicate_count"] = len(matched_provider_names)
     return merged
 
@@ -309,11 +453,14 @@ class SearchFanoutExecutor(StepExecutor):
         hits_by_url: dict[str, dict] = {}
         fallback_hits: list[dict] = []
         for bundle in bundles:
+            bundle_provider_type = bundle.request_metadata.get("provider_type", "")
             for hit in bundle.hits:
                 source_info = self.source_registry.lookup(hit.source_domain)
                 metadata = hit.metadata or {}
+                provider_type = metadata.get("provider_type") or bundle_provider_type
                 normalized_hit = {
                     "provider": hit.provider,
+                    "provider_type": provider_type,
                     "query": hit.query,
                     "title": hit.title,
                     "source_url": hit.url or f"https://{hit.source_domain}/article-fallback",
@@ -327,18 +474,23 @@ class SearchFanoutExecutor(StepExecutor):
                     "publisher": metadata.get("publisher"),
                     "language": metadata.get("language"),
                     "matched_provider_names": [hit.provider],
+                    "matched_provider_types": [provider_type] if provider_type else [],
                     "matched_source_domains": [hit.source_domain] if hit.source_domain else [],
+                    "matched_source_urls": [hit.url] if hit.url else [],
                     "duplicate_count": 1,
                 }
-                dedup_key = _canonicalize_url(normalized_hit["source_url"])
+                dedup_key = _search_dedup_url_key(normalized_hit["source_url"])
                 if dedup_key:
+                    normalized_hit["search_dedup_url_key"] = dedup_key
                     existing = hits_by_url.get(dedup_key)
                     hits_by_url[dedup_key] = (
                         _merge_hit_records(existing, normalized_hit) if existing is not None else normalized_hit
                     )
                 else:
                     fallback_hits.append(normalized_hit)
-        hits = list(hits_by_url.values()) + fallback_hits
+        unfiltered_hits = list(hits_by_url.values()) + fallback_hits
+        source_policy = _source_policy_from_task(task)
+        hits, filtered_out_hit_count = _filter_items_by_source_policy(unfiltered_hits, source_policy)
         search_invocations = [
             SearchInvocationRecord(
                 provider_name=bundle.provider,
@@ -359,6 +511,9 @@ class SearchFanoutExecutor(StepExecutor):
                 "topic": topic,
                 "total_hits": len(hits),
                 "raw_hit_count": sum(len(bundle.hits) for bundle in bundles),
+                "filtered_out_hit_count": filtered_out_hit_count,
+                "source_filter_applied": filtered_out_hit_count > 0,
+                "source_filter_policy": _source_policy_filter_metadata(source_policy),
                 "hits": hits,
             },
             checkpoint_type="retrieval_search_completed",
@@ -429,6 +584,8 @@ class FetchDocumentsExecutor(StepExecutor):
         fetch_invocations = []
         available_artifact = _first_upstream_artifact(task, step)
         hits = available_artifact.content_json.get("hits", []) if available_artifact else []
+        source_policy = _source_policy_from_task(task)
+        hits, filtered_out_hit_count = _filter_items_by_source_policy(hits, source_policy)
         for hit in hits:
             source_url = hit.get("source_url") or f"https://{hit.get('source_domain', 'example.com')}/"
             fetched = fetch_provider.fetch(source_url)
@@ -483,6 +640,9 @@ class FetchDocumentsExecutor(StepExecutor):
                 "input_artifact_ids": upstream,
                 "raw_document_count": len(fetch_invocations),
                 "document_count": len(docs),
+                "filtered_out_hit_count": filtered_out_hit_count,
+                "source_filter_applied": filtered_out_hit_count > 0,
+                "source_filter_policy": _source_policy_filter_metadata(source_policy),
                 "documents": docs,
             },
             checkpoint_type="fetch_documents_completed",
@@ -616,6 +776,8 @@ class MergeSearchResultsExecutor(StepExecutor):
                 documents.extend(source_artifact.content_json.get("documents", []))
             if source_artifact.schema_name == "mcp_tool_result":
                 mcp_context_documents.extend(source_artifact.content_json.get("context_documents", []))
+        source_policy = _source_policy_from_task(task)
+        documents, filtered_out_document_count = _filter_items_by_source_policy(documents, source_policy)
         merged_documents = [
             {
                 "url": item.get("canonical_url") or item.get("url"),
@@ -642,6 +804,9 @@ class MergeSearchResultsExecutor(StepExecutor):
                 "strategy": "document_merge",
                 "input_artifact_ids": upstream,
                 "document_count": len(merged_documents),
+                "filtered_out_document_count": filtered_out_document_count,
+                "source_filter_applied": filtered_out_document_count > 0,
+                "source_filter_policy": _source_policy_filter_metadata(source_policy),
                 "documents": merged_documents,
                 "mcp_context_documents": mcp_context_documents,
             },
@@ -673,18 +838,23 @@ class NormalizeAndFilterExecutor(StepExecutor):
 
         @Author: mosliu
         """
-        policy = task.options_payload.get("source_policy", {})
+        policy = _source_policy_from_task(task)
         upstream = list(step.input_artifact_refs)
         source_artifact = _first_upstream_artifact(task, step)
         documents = source_artifact.content_json.get("documents", []) if source_artifact else []
 
         require_non_empty = policy.get("require_non_empty", True)
-        include_regions = set(policy.get("include_regions", []))
+        include_regions = _source_policy_include_regions(policy)
         filtered = []
+        filtered_out_document_count = 0
+        source_filtered_out_document_count = 0
         for item in documents:
             if require_non_empty and not item.get("content_preview"):
+                filtered_out_document_count += 1
                 continue
-            if include_regions and item.get("region_hint") not in include_regions:
+            if include_regions and str(item.get("region_hint") or "").strip().lower() not in include_regions:
+                filtered_out_document_count += 1
+                source_filtered_out_document_count += 1
                 continue
             filtered.append(item)
 
@@ -698,6 +868,10 @@ class NormalizeAndFilterExecutor(StepExecutor):
                 "input_artifact_ids": upstream,
                 "filter_policy": policy,
                 "document_count": len(filtered),
+                "filtered_out_document_count": filtered_out_document_count,
+                "source_filtered_out_document_count": source_filtered_out_document_count,
+                "source_filter_applied": source_filtered_out_document_count > 0,
+                "source_filter_policy": _source_policy_filter_metadata(policy),
                 "documents": filtered,
             },
             checkpoint_type="retrieval_bundle_completed",
@@ -791,9 +965,14 @@ class ExtractOfficialResponsesExecutor(StepExecutor):
             if artifact.schema_name in {"merged_results_bundle", "fetched_documents_bundle"}:
                 documents.extend(artifact.content_json.get("documents", []))
         if not documents:
-            for artifact in task.artifacts:
-                if artifact.schema_name in {"merged_results_bundle", "fetched_documents_bundle"}:
-                    documents.extend(artifact.content_json.get("documents", []))
+            for schema_name in ["merged_results_bundle", "fetched_documents_bundle"]:
+                for artifact in reversed(task.artifacts):
+                    if artifact.schema_name == schema_name:
+                        documents.extend(artifact.content_json.get("documents", []))
+                        break
+                if documents:
+                    break
+        documents = _deduplicate_document_records(documents)
         official_candidates = []
         for item in documents:
             text = " ".join(

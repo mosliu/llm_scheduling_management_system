@@ -1373,11 +1373,15 @@ class TaskRepository:
                         extra_metadata={
                             "node_key": step.node_key,
                             "source_url": hit.get("source_url"),
+                            "provider_type": hit.get("provider_type"),
                             "author": hit.get("author"),
                             "publisher": hit.get("publisher"),
                             "language": hit.get("language"),
+                            "search_dedup_url_key": hit.get("search_dedup_url_key"),
                             "matched_provider_names": hit.get("matched_provider_names", [hit.get("provider")]),
+                            "matched_provider_types": hit.get("matched_provider_types", [hit.get("provider_type")]),
                             "matched_source_domains": hit.get("matched_source_domains", [hit.get("source_domain")]),
+                            "matched_source_urls": hit.get("matched_source_urls", [hit.get("source_url")]),
                             "duplicate_count": hit.get("duplicate_count", 1),
                         },
                     )

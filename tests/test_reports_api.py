@@ -4,7 +4,30 @@ def test_briefing_page_renders(client):
     assert response.status_code == 200
     assert "信息研判助手" in response.text
     assert "接口地址" in response.text
+    assert "只保留中国来源" in response.text
+    assert "keep_china_sources_only" in response.text
     assert "/api/v1/reports/public-opinion" in response.text
+
+
+def test_public_opinion_report_endpoint_can_keep_china_sources_only(client):
+    response = client.post(
+        "/api/v1/reports/public-opinion",
+        json={
+            "topic": "只保留中国来源测试",
+            "search_provider_names": ["exa_search"],
+            "execution_engine": "native",
+            "keep_china_sources_only": True,
+        },
+    )
+
+    assert response.status_code == 202
+    task_response = client.get(response.json()["query_url"])
+    assert task_response.status_code == 200
+    task_payload = task_response.json()
+    assert task_payload["options_payload"]["source_policy"] == {
+        "keep_china_sources_only": True,
+        "include_regions": ["cn"],
+    }
 
 
 def test_public_opinion_report_endpoint_can_auto_start(client):

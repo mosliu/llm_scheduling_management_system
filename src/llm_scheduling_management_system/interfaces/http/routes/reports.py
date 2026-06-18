@@ -43,6 +43,7 @@ class PublicOpinionReportRequest(BaseModel):
     report_retry_count: int = 2
     llm_model_retry_count: int = 2
     auto_start: bool = False
+    keep_china_sources_only: bool = False
     report_fallback_profile_names: list[str] = Field(
         default_factory=lambda: ["grok_reasoning_optional", "claude_opus_web_search_optional", "cheap_structured_cn"]
     )
@@ -69,22 +70,29 @@ def create_public_opinion_report(
 
     @Author: mosliu
     """
+    options = {
+        "disable_cache": request.disable_cache,
+        "search_provider_names": request.search_provider_names,
+        "search_limit": request.search_limit,
+        "fetch_provider_name": request.fetch_provider_name,
+        "llm_profile_name": request.llm_profile_name,
+        "report_retry_count": request.report_retry_count,
+        "llm_model_retry_count": request.llm_model_retry_count,
+        "report_fallback_profile_names": request.report_fallback_profile_names,
+        "execution_engine": request.execution_engine,
+    }
+    if request.keep_china_sources_only:
+        options["source_policy"] = {
+            "keep_china_sources_only": True,
+            "include_regions": ["cn"],
+        }
+
     task = service.create_task(
         CreateTaskRequest(
             template_id="public_opinion_report_v1",
             tenant_id=request.tenant_id,
             input={"topic": request.topic},
-            options={
-                "disable_cache": request.disable_cache,
-                "search_provider_names": request.search_provider_names,
-                "search_limit": request.search_limit,
-                "fetch_provider_name": request.fetch_provider_name,
-                "llm_profile_name": request.llm_profile_name,
-                "report_retry_count": request.report_retry_count,
-                "llm_model_retry_count": request.llm_model_retry_count,
-                "report_fallback_profile_names": request.report_fallback_profile_names,
-                "execution_engine": request.execution_engine,
-            },
+            options=options,
         )
     )
     if request.auto_start:

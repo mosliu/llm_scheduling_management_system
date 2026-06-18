@@ -273,6 +273,7 @@ class BaseConfiguredSearchProvider(SearchProvider):
             request_metadata={
                 "simulated": True,
                 "vendor": self.config.vendor,
+                "provider_type": self.config.provider_type,
                 "base_url": self.config.base_url,
                 "timeout_seconds": self.config.timeout_seconds,
                 "limit": limit,
@@ -303,6 +304,7 @@ class BaseConfiguredSearchProvider(SearchProvider):
             {
                 "simulated": False,
                 "vendor": self.config.vendor,
+                "provider_type": self.config.provider_type,
                 "limit": limit,
                 "request": {
                     "method": request.method,
