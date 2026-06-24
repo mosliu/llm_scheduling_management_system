@@ -155,6 +155,43 @@ class SearchConfig(BaseModel):
     policy: SearchPolicyConfig = Field(default_factory=SearchPolicyConfig)
 
 
+class ElasticsearchConfig(BaseModel):
+    """Elasticsearch 7.10 配置。"""
+
+    base_url: str = "http://localhost:9200"
+    username: str | None = None
+    password: str | None = None
+    api_key: str | None = None
+    timeout_seconds: int = 30
+    enabled: bool = True
+    simulate: bool = True
+    verify_ssl: bool = True
+    version: str = "7.10"
+    index_prefix: str = "qb"
+    default_index_sequence: int = 1
+    default_mappings_path: str = "docs/es_mappings.json"
+    analysis_llm_profile: str = "cheap_structured_cn"
+    fallback_search_month_window: int = 3
+    date_field: str = "release_date"
+    default_search_fields: list[str] = Field(
+        default_factory=lambda: [
+            "title^6",
+            "bak1^5",
+            "content^3",
+            "navigation^2",
+            "media_name^2",
+            "author^2",
+            "retweeted_source^2",
+            "content_media_name^2",
+            "listname^1.5",
+            "information_source_area^1.5",
+            "post_place^1.5",
+            "ocr",
+        ]
+    )
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+
+
 class LLMProviderConfig(BaseModel):
     """LLM 服务提供商的连接配置。
 
@@ -276,4 +313,3 @@ class MCPConfig(BaseModel):
     @Author: mosliu
     """
     servers: list[MCPServerConfig] = Field(default_factory=list)
-

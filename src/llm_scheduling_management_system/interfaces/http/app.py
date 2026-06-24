@@ -6,6 +6,7 @@ from llm_scheduling_management_system.db import init_db
 from llm_scheduling_management_system.interfaces.http.routes.briefing import router as briefing_router
 from llm_scheduling_management_system.interfaces.http.routes.configuration import router as configuration_router
 from llm_scheduling_management_system.interfaces.http.routes.console import router as console_router
+from llm_scheduling_management_system.interfaces.http.routes.elasticsearch import router as elasticsearch_router
 from llm_scheduling_management_system.interfaces.http.routes.provider_catalog import router as provider_catalog_router
 from llm_scheduling_management_system.interfaces.http.routes.catalog import router as catalog_router
 from llm_scheduling_management_system.interfaces.http.routes.inspection import router as inspection_router
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(briefing_router)
     app.include_router(configuration_router)
     app.include_router(console_router)
+    app.include_router(elasticsearch_router)
     app.include_router(inspection_router)
     app.include_router(provider_catalog_router)
     app.include_router(reports_router)
@@ -83,4 +85,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

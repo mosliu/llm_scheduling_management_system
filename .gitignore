@@ -31,6 +31,7 @@ data/
 config/app.toml
 config/access.toml
 config/llm.toml
+config/es.toml
 config/search.toml
 config/mcp.toml
 config/source_registry.toml

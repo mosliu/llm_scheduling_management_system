@@ -66,6 +66,12 @@ class ConfigEditor:
         path = resolve_config_path("config/search.toml", "config/search.example.toml")
         return str(path), self._read(path)
 
+    def get_elasticsearch_config(self) -> tuple[str, dict[str, Any]]:
+        """获取 Elasticsearch 配置文件的路径和数据内容。"""
+
+        path = resolve_config_path("config/es.toml", "config/es.example.toml")
+        return str(path), self._read(path)
+
     def save_search_config(self, data: dict[str, Any]) -> str:
         """保存搜索配置文件数据。
 
@@ -78,6 +84,13 @@ class ConfigEditor:
         @Author: mosliu
         """
         path = Path("config/search.toml")
+        self._write(path, data)
+        return str(path)
+
+    def save_elasticsearch_config(self, data: dict[str, Any]) -> str:
+        """保存 Elasticsearch 配置文件数据。"""
+
+        path = Path("config/es.toml")
         self._write(path, data)
         return str(path)
 

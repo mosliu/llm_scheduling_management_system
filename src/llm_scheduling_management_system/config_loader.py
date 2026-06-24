@@ -5,6 +5,7 @@ import tomllib
 from llm_scheduling_management_system.config_models import (
     AccessConfig,
     AppConfig,
+    ElasticsearchConfig,
     LLMConfig,
     MCPConfig,
     SearchConfig,
@@ -78,6 +79,13 @@ def load_app_config(path: str | Path | None = None) -> AppConfig:
     return AppConfig.model_validate(_load_toml(config_path))
 
 
+def load_elasticsearch_config(path: str | Path | None = None) -> ElasticsearchConfig:
+    """加载 Elasticsearch 配置。"""
+
+    env_path = os.getenv("LSMS_ELASTICSEARCH_CONFIG_PATH")
+    config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/es.toml", "config/es.example.toml")
+    return ElasticsearchConfig.model_validate(_load_toml(config_path))
+
 
 def load_access_config(path: str | Path | None = None) -> AccessConfig:
     """加载系统身份验证与访问控制的配置。
@@ -141,4 +149,3 @@ def load_mcp_config(path: str | Path | None = None) -> MCPConfig:
     env_path = os.getenv("LSMS_MCP_CONFIG_PATH")
     config_path = Path(path) if path is not None else Path(env_path) if env_path else resolve_config_path("config/mcp.toml", "config/mcp.example.toml")
     return MCPConfig.model_validate(_load_toml(config_path))
-

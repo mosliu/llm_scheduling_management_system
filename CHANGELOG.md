@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Updated model-embedded search providers to use current Responses/grounding-style request shapes for Grok and OpenAI web search.
+- Improved Firecrawl search configuration handling so console tests and workflow searches can pass provider-specific options such as `sources` and `scrapeOptions`.
 - Deduplicated cross-provider search hits by normalized URL while ignoring common tracking query parameters.
 - Prioritized direct search API hits over model-embedded search hits when multiple providers return the same URL.
 - Normalized MySQL/MariaDB database URLs to use `charset=utf8mb4` for runtime and Alembic connections.
@@ -18,11 +20,17 @@
 
 ### Added
 
-- Added Alembic migration `20260618_003` to upgrade existing MySQL text columns to `LONGTEXT CHARACTER SET utf8mb4`.
-- Added database Unicode tests for MySQL DDL generation, DSN normalization, and long multilingual document persistence.
+- Added a console search-provider test page for one-off Grok, GPT, Gemini, Firecrawl, and other provider diagnostics.
+- Added Bocha Web Search as a configurable search provider using the `/v1/web-search` API.
+- Added search-provider configuration documentation for Bocha and Firecrawl.
+- Changed console search-provider tests to return explicit errors instead of simulated hits.
+- Allowed Firecrawl search requests to omit the authorization header when no key is configured, and let Firecrawl inline content bypass the separate fetch step.
+- Added Gemini Google Search grounding as a configurable model-embedded search provider.
 - Added a `/briefing` China-sources-only checkbox wired to report `source_policy.include_regions = ["cn"]`.
 - Added source-region filtering across search fanout, document fetch, result merge, and normalize/filter artifacts, with filter metadata preserved for audit.
 - Added `.cn` domain inference in the source registry so unregistered Chinese domains can be retained by China-only filtering.
+- Added Alembic migration `20260618_003` to upgrade existing MySQL text columns to `LONGTEXT CHARACTER SET utf8mb4`.
+- Added database Unicode tests for MySQL DDL generation, DSN normalization, and long multilingual document persistence.
 - Added an explicit `/briefing` search result limit control, defaulting to 20 results per selected search provider.
 - Added `/briefing` completed-step metrics for per-provider search result counts, fetch method, fetch call count, and fetched document count.
 

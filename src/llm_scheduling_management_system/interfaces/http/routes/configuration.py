@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from llm_scheduling_management_system.config_editor import ConfigEditor
-from llm_scheduling_management_system.config_models import LLMConfig, MCPConfig, SearchConfig
+from llm_scheduling_management_system.config_models import ElasticsearchConfig, LLMConfig, MCPConfig, SearchConfig
 from llm_scheduling_management_system.services.config_test_service import ConfigTestService
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
@@ -42,6 +42,14 @@ def get_search_config() -> dict:
     return {"path": path, "data": data}
 
 
+@router.get("/es")
+def get_elasticsearch_config() -> dict:
+    """获取当前的 Elasticsearch 配置。"""
+
+    path, data = editor.get_elasticsearch_config()
+    return {"path": path, "data": data}
+
+
 @router.post("/search")
 def save_search_config(payload: ConfigPayload) -> dict:
     """保存搜索服务配置。
@@ -56,6 +64,14 @@ def save_search_config(payload: ConfigPayload) -> dict:
     @Author: mosliu
     """
     path = editor.save_search_config(payload.data)
+    return {"path": path, "saved": True}
+
+
+@router.post("/es")
+def save_elasticsearch_config(payload: ConfigPayload) -> dict:
+    """保存 Elasticsearch 配置。"""
+
+    path = editor.save_elasticsearch_config(payload.data)
     return {"path": path, "saved": True}
 
 
@@ -74,6 +90,14 @@ def test_search_config(payload: ConfigPayload) -> dict:
     """
     config = SearchConfig.model_validate(payload.data)
     return test_service.test_search_config(config)
+
+
+@router.post("/es/test")
+def test_elasticsearch_config(payload: ConfigPayload) -> dict:
+    """测试指定的 Elasticsearch 配置。"""
+
+    config = ElasticsearchConfig.model_validate(payload.data)
+    return test_service.test_elasticsearch_config(config)
 
 
 @router.get("/llm")
@@ -224,8 +248,9 @@ def get_grok_search_note() -> dict:
     return {
         "compatible": True,
         "mode": "model_embedded_search",
-        "validated_model": "grok-4.20-beta",
-        "note": "Grok should be configured as model-embedded search, not as a standalone search provider. The relay currently validates grok-4.20-beta.",
+        "validated_model": "grok-4.3",
+        "endpoint": "/v1/responses",
+        "note": "Grok should be configured as model-embedded search through the Responses API with a web_search tool, not as a standalone search endpoint.",
     }
 
 

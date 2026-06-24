@@ -21,6 +21,7 @@ The target business scenarios include:
 
 ## Document Index
 
+- [CHANGELOG.md](./CHANGELOG.md)
 - [01-system-overview.md](./01-system-overview.md)
 - [02-workflow-execution-model.md](./02-workflow-execution-model.md)
 - [03-search-pipeline-design.md](./03-search-pipeline-design.md)
@@ -28,6 +29,10 @@ The target business scenarios include:
 - [05-data-model-design.md](./05-data-model-design.md)
 - [06-api-design.md](./06-api-design.md)
 - [07-implementation-roadmap.md](./07-implementation-roadmap.md)
+- [08-liuzhou-earthquake-task-execution.md](./08-liuzhou-earthquake-task-execution.md)
+- [09-user-facing-briefing-ui.md](./09-user-facing-briefing-ui.md)
+- [10-briefing-standalone-build.md](./10-briefing-standalone-build.md)
+- [11-search-provider-configuration.md](./11-search-provider-configuration.md)
 
 ## Recommended Reading Order
 
@@ -38,6 +43,10 @@ The target business scenarios include:
 5. Data model design
 6. API design
 7. Implementation roadmap
+8. Liuzhou earthquake task execution
+9. User-facing briefing UI
+10. Briefing standalone build
+11. Search provider configuration
 
 ## Local Development
 

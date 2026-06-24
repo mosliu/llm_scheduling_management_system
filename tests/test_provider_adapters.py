@@ -3,8 +3,11 @@ from llm_scheduling_management_system.providers.http_client import ProviderRespo
 from llm_scheduling_management_system.providers.llms import AnthropicProvider, OpenAIProvider
 from llm_scheduling_management_system.providers.fetch import FirecrawlFetchProvider
 from llm_scheduling_management_system.providers.search import (
+    BochaSearchProvider,
     ExaSearchProvider,
     FirecrawlSearchProvider,
+    GeminiSearchProvider,
+    GrokSearchProvider,
     OpenAIWebSearchProvider,
     TavilySearchProvider,
     TinyFishSearchProvider,
@@ -29,19 +32,31 @@ def test_search_providers_build_expected_requests():
     tavily = TavilySearchProvider(_search_config("tavily", "tavily_search", "https://api.tavily.com"))
     firecrawl = FirecrawlSearchProvider(_search_config("firecrawl", "firecrawl_search", "https://api.firecrawl.dev"))
     tinyfish = TinyFishSearchProvider(_search_config("tinyfish", "tinyfish_search", "https://api.search.tinyfish.ai"))
+    bocha = BochaSearchProvider(_search_config("bocha", "bocha_search", "https://api.bochaai.com"))
+    gemini = GeminiSearchProvider(_search_config("gemini", "gemini_search", "https://generativelanguage.googleapis.com/v1beta"))
 
     exa_request = exa.build_request("test query", limit=5)
     tavily_request = tavily.build_request("test query", limit=5)
     firecrawl_request = firecrawl.build_request("test query", limit=5)
     tinyfish_request = tinyfish.build_request("test query", limit=5)
+    bocha_request = bocha.build_request("test query", limit=5)
+    gemini_request = gemini.build_request("test query", limit=5)
 
     assert exa_request.method == "POST"
     assert exa_request.url.endswith("/search")
     assert tavily_request.headers["Authorization"].startswith("Bearer ")
     assert tavily_request.json_body["max_results"] == 5
     assert firecrawl_request.url.endswith("/v2/search")
+    assert firecrawl_request.json_body["limit"] == 5
     assert tinyfish_request.method == "GET"
     assert tinyfish_request.params["query"] == "test query"
+    assert bocha_request.url.endswith("/v1/web-search")
+    assert bocha_request.headers["Authorization"] == "Bearer test-key"
+    assert bocha_request.json_body["query"] == "test query"
+    assert bocha_request.json_body["count"] == 5
+    assert gemini_request.url.endswith("/models/gemini-3.5-flash:generateContent")
+    assert gemini_request.headers["x-goog-api-key"] == "test-key"
+    assert gemini_request.json_body["tools"][0]["google_search"] == {}
 
 
 def test_tavily_request_includes_default_options():
@@ -65,6 +80,112 @@ def test_tavily_request_includes_default_options():
     assert request.json_body["topic"] == "general"
     assert request.json_body["search_depth"] == "basic"
     assert request.json_body["include_answer"] is True
+
+
+def test_firecrawl_request_includes_default_options():
+    config = SearchProviderConfig(
+        name="firecrawl_search",
+        provider_type="search_with_inline_content",
+        vendor="firecrawl",
+        base_url="https://api.firecrawl.dev",
+        api_key="test-key",
+        timeout_seconds=30,
+        enabled=True,
+        simulate=True,
+        default_options={
+            "sources": ["web", "news"],
+            "scrapeOptions": {"formats": ["markdown"], "onlyMainContent": True},
+        },
+    )
+    provider = FirecrawlSearchProvider(config)
+
+    request = provider.build_request("hello", limit=3)
+
+    assert request.json_body["query"] == "hello"
+    assert request.json_body["limit"] == 3
+    assert request.json_body["sources"] == ["web", "news"]
+    assert request.json_body["scrapeOptions"]["formats"] == ["markdown"]
+
+
+def test_firecrawl_request_omits_authorization_when_key_is_not_configured():
+    config = SearchProviderConfig(
+        name="firecrawl_search",
+        provider_type="search_with_inline_content",
+        vendor="firecrawl",
+        base_url="https://api.firecrawl.dev",
+        api_key="",
+        timeout_seconds=30,
+        enabled=True,
+        simulate=False,
+        default_options={"sources": ["web"]},
+    )
+    provider = FirecrawlSearchProvider(config)
+
+    request = provider.build_request("hello", limit=3)
+
+    assert "Authorization" not in request.headers
+    assert request.json_body["query"] == "hello"
+    assert request.json_body["limit"] == 3
+
+
+def test_firecrawl_request_drops_blank_authorization_extra_header():
+    config = SearchProviderConfig(
+        name="firecrawl_search",
+        provider_type="search_with_inline_content",
+        vendor="firecrawl",
+        base_url="https://api.firecrawl.dev",
+        api_key="",
+        timeout_seconds=30,
+        enabled=True,
+        simulate=False,
+        extra_headers={"Authorization": "Bearer "},
+    )
+    provider = FirecrawlSearchProvider(config)
+
+    request = provider.build_request("hello", limit=3)
+
+    assert "Authorization" not in request.headers
+
+
+def test_firecrawl_request_sends_authorization_when_key_is_configured():
+    config = SearchProviderConfig(
+        name="firecrawl_search",
+        provider_type="search_with_inline_content",
+        vendor="firecrawl",
+        base_url="https://api.firecrawl.dev",
+        api_key="fc-test-key",
+        timeout_seconds=30,
+        enabled=True,
+        simulate=False,
+    )
+    provider = FirecrawlSearchProvider(config)
+
+    request = provider.build_request("hello", limit=3)
+
+    assert request.headers["Authorization"] == "Bearer fc-test-key"
+
+
+def test_bocha_request_includes_default_options():
+    config = SearchProviderConfig(
+        name="bocha_search",
+        provider_type="search_with_inline_content",
+        vendor="bocha",
+        base_url="https://api.bochaai.com",
+        api_key="test-key",
+        timeout_seconds=30,
+        enabled=True,
+        simulate=True,
+        default_options={"freshness": "oneDay", "summary": True},
+    )
+    provider = BochaSearchProvider(config)
+
+    request = provider.build_request("hello", limit=3)
+
+    assert request.url.endswith("/v1/web-search")
+    assert request.json_body["query"] == "hello"
+    assert request.json_body["count"] == 3
+    assert request.json_body["freshness"] == "oneDay"
+    assert request.json_body["summary"] is True
 
 
 def test_openai_web_search_provider_builds_responses_request():
@@ -91,7 +212,60 @@ def test_openai_web_search_provider_builds_responses_request():
     assert request.url.endswith("/responses")
     assert request.json_body["model"] == "gpt-5.5"
     assert request.json_body["tools"][0]["type"] == "web_search"
+    assert request.json_body["tool_choice"] == "required"
     assert "Return up to 3" in request.json_body["input"]
+
+
+def test_grok_search_provider_builds_responses_request_and_normalizes_tools():
+    config = SearchProviderConfig(
+        name="grok_search",
+        provider_type="model_embedded_search",
+        vendor="grok",
+        base_url="https://api.x.ai/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+        default_options={
+            "model": "grok-4.3",
+            "tools": [{"type": "web_search", "name": "web_search"}],
+        },
+    )
+
+    provider = GrokSearchProvider(config)
+    request = provider.build_request("hello", limit=3)
+
+    assert request.url.endswith("/responses")
+    assert request.json_body["model"] == "grok-4.3"
+    assert request.json_body["tools"] == [{"type": "web_search"}]
+    assert request.json_body["input"][0]["role"] == "user"
+    assert "Return up to 3" in request.json_body["input"][0]["content"]
+
+
+def test_openai_web_search_provider_builds_chat_completions_search_request():
+    config = SearchProviderConfig(
+        name="gpt_search",
+        provider_type="model_embedded_search",
+        vendor="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+        default_options={
+            "api_mode": "chat_completions",
+            "model": "gpt-5-search-api",
+            "web_search_options": {"search_context_size": "low"},
+        },
+    )
+
+    provider = OpenAIWebSearchProvider(config)
+    request = provider.build_request("hello", limit=3)
+
+    assert request.url.endswith("/chat/completions")
+    assert request.json_body["model"] == "gpt-5-search-api"
+    assert request.json_body["web_search_options"]["search_context_size"] == "low"
+    assert "tools" not in request.json_body
 
 
 def test_openai_web_search_provider_parses_structured_results():
@@ -131,6 +305,87 @@ def test_openai_web_search_provider_parses_structured_results():
     assert bundle.hits[0].source_type == "official"
     assert bundle.hits[0].metadata["publisher"] == "OpenAI"
     assert bundle.hits[0].metadata["region_hint"] == "global"
+
+
+def test_model_embedded_search_parses_citations_when_json_is_missing():
+    config = SearchProviderConfig(
+        name="gpt_search",
+        provider_type="model_embedded_search",
+        vendor="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+    )
+    provider = OpenAIWebSearchProvider(config)
+
+    payload = {
+        "output_text": "A concise answer with citations.",
+        "output": [
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "A concise answer with citations.",
+                        "annotations": [
+                            {
+                                "type": "url_citation",
+                                "url": "https://platform.openai.com/docs/guides/tools-web-search",
+                                "title": "Web search",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    bundle = provider.parse_response("q", payload, limit=5)
+
+    assert bundle.hits[0].title == "Web search"
+    assert bundle.hits[0].source_domain == "platform.openai.com"
+    assert bundle.hits[0].source_type == "web_search"
+
+
+def test_gemini_search_provider_parses_grounding_chunks_when_json_is_missing():
+    config = SearchProviderConfig(
+        name="gemini_search",
+        provider_type="model_embedded_search",
+        vendor="gemini",
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        api_key="test-key",
+        timeout_seconds=60,
+        enabled=True,
+        simulate=True,
+    )
+    provider = GeminiSearchProvider(config)
+
+    payload = {
+        "candidates": [
+            {
+                "content": {"parts": [{"text": "Grounded answer"}]},
+                "groundingMetadata": {
+                    "webSearchQueries": ["official docs"],
+                    "groundingChunks": [
+                        {
+                            "web": {
+                                "uri": "https://ai.google.dev/gemini-api/docs/google-search",
+                                "title": "Google Search grounding",
+                            }
+                        }
+                    ],
+                },
+            }
+        ]
+    }
+
+    bundle = provider.parse_response("q", payload, limit=5)
+
+    assert bundle.hits[0].title == "Google Search grounding"
+    assert bundle.hits[0].source_domain == "ai.google.dev"
+    assert bundle.hits[0].metadata["web_search_queries"] == ["official docs"]
 
 
 def test_llm_providers_build_expected_requests():
@@ -365,17 +620,88 @@ def test_search_provider_response_parsers():
     tavily = TavilySearchProvider(_search_config("tavily", "tavily_search", "https://api.tavily.com"))
     firecrawl = FirecrawlSearchProvider(_search_config("firecrawl", "firecrawl_search", "https://api.firecrawl.dev"))
     tinyfish = TinyFishSearchProvider(_search_config("tinyfish", "tinyfish_search", "https://api.search.tinyfish.ai"))
+    bocha = BochaSearchProvider(_search_config("bocha", "bocha_search", "https://api.bochaai.com"))
+    gemini = GeminiSearchProvider(_search_config("gemini", "gemini_search", "https://generativelanguage.googleapis.com/v1beta"))
 
     exa_bundle = exa.parse_response("q", {"results": [{"title": "T1", "url": "https://exa.example.com/a", "publishedDate": "2026-01-01", "summary": "S"}]}, limit=5)
     tavily_bundle = tavily.parse_response("q", {"results": [{"title": "T2", "url": "https://tavily.example.com/b", "content": "C"}]}, limit=5)
-    firecrawl_bundle = firecrawl.parse_response("q", {"data": {"web": [{"title": "T3", "url": "https://firecrawl.example.com/c", "description": "D", "metadata": {"statusCode": 200}}]}}, limit=5)
+    firecrawl_bundle = firecrawl.parse_response(
+        "q",
+        {
+            "data": {
+                "web": [
+                    {
+                        "title": "T3",
+                        "url": "https://firecrawl.example.com/c",
+                        "description": "D",
+                        "markdown": "# Full Firecrawl body",
+                        "metadata": {"statusCode": 200},
+                    }
+                ]
+            }
+        },
+        limit=5,
+    )
     tinyfish_bundle = tinyfish.parse_response("q", {"results": [{"title": "T4", "site_name": "tinyfish.example.com", "snippet": "S4", "url": "https://tinyfish.example.com/d"}]}, limit=5)
+    bocha_bundle = bocha.parse_response(
+        "q",
+        {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "webPages": {
+                    "webSearchUrl": "https://bocha.example.com/search?q=q",
+                    "totalEstimatedMatches": 10,
+                    "value": [
+                        {
+                            "id": "bocha-1",
+                            "name": "T5",
+                            "url": "https://bocha.example.com/e",
+                            "displayUrl": "bocha.example.com/e",
+                            "snippet": "Snippet",
+                            "summary": "Summary",
+                            "datePublished": "2026-01-02",
+                        }
+                    ],
+                }
+            },
+        },
+        limit=5,
+    )
+    gemini_bundle = gemini.parse_response(
+        "q",
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    '{"results":[{"title":"T6","url":"https://gemini.example.com/e",'
+                                    '"content":"S6","sourceType":"official"}]}'
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        limit=5,
+    )
 
     assert exa_bundle.hits[0].published_at_utc == "2026-01-01"
     assert exa_bundle.hits[0].url == "https://exa.example.com/a"
     assert tavily_bundle.hits[0].snippet == "C"
     assert firecrawl_bundle.hits[0].metadata["statusCode"] == 200
+    assert firecrawl_bundle.hits[0].snippet == "D"
+    assert firecrawl_bundle.hits[0].metadata["inline_content_text"] == "# Full Firecrawl body"
+    assert firecrawl_bundle.hits[0].metadata["inline_content_format"] == "markdown"
     assert tinyfish_bundle.hits[0].source_domain == "tinyfish.example.com"
+    assert bocha_bundle.hits[0].title == "T5"
+    assert bocha_bundle.hits[0].snippet == "Summary"
+    assert bocha_bundle.hits[0].published_at_utc == "2026-01-02"
+    assert bocha_bundle.request_metadata["total_estimated_matches"] == 10
+    assert gemini_bundle.hits[0].title == "T6"
 
 
 def test_fetch_and_llm_provider_response_parsers():

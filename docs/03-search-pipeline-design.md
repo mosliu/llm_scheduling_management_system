@@ -352,6 +352,7 @@ Current referenced providers include:
 - TinyFish
 - Grok web search and X search
 - OpenAI web search through the `responses` API
+- Gemini Google Search grounding through the `generateContent` API
 
 ## 11.1 Provider Role Categories
 
@@ -515,6 +516,7 @@ In practice:
 - Exa contents, Firecrawl scrape, Tavily extract, TinyFish fetch map to `document_fetch_executor`
 - Firecrawl crawl and Tavily crawl map to `crawl_executor`
 - Grok web search and X search map to LLM tool-enabled invocation policies
+- Gemini Google Search grounding maps to a model-embedded search provider when the workflow needs Google-grounded answers and citations
 
 ## 11.4 Provider Selection Policy
 

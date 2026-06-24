@@ -738,8 +738,8 @@ def test_task_invocation_endpoints_return_aggregated_calls(client):
     assert fetch_response.status_code == 200
     assert tool_response.status_code == 200
     assert llm_response.status_code == 200
-    assert len(search_response.json()) == 2
-    assert len(fetch_response.json()) == 4
+    assert len(search_response.json()) == 4
+    assert len(fetch_response.json()) == 8
     assert len(tool_response.json()) == 0
     assert len(llm_response.json()) == 1
 
@@ -860,7 +860,7 @@ def test_task_stats_endpoint_returns_aggregate_counts(client):
     assert payload["artifact_count"] >= 1
     assert payload["document_count"] >= 1
     assert payload["search_hit_count"] >= 1
-    assert payload["search_invocation_count"] == 2
+    assert payload["search_invocation_count"] == 4
     assert payload["fetch_invocation_count"] >= 1
     assert payload["tool_invocation_count"] >= 0
     assert payload["llm_invocation_count"] == 1
@@ -1239,6 +1239,76 @@ def test_fetch_documents_deduplicates_documents_by_canonical_url():
     assert docs[0]["canonical_url"] == "https://example.com/shared-article"
     assert set(docs[0]["metadata"]["matched_provider_names"]) == {"provider_a", "provider_b"}
     assert docs[0]["metadata"]["duplicate_count"] == 2
+
+
+def test_fetch_documents_uses_inline_content_without_fetching():
+    class _FailingFetchProvider:
+        def fetch(self, url: str) -> FetchDocument:
+            raise AssertionError("fetch should not be called for inline search content")
+
+    class _InlineFetchFactory:
+        def build_fetch_provider_by_name(self, provider_name: str):
+            return _FailingFetchProvider()
+
+        def build_default_fetch_provider(self):
+            return _FailingFetchProvider()
+
+    executor = FetchDocumentsExecutor(search_provider_factory=_InlineFetchFactory())
+    executor.source_registry = _StubSourceRegistry()
+    task = type(
+        "Task",
+        (),
+        {
+            "id": "run_inline",
+            "options_payload": {"fetch_provider_name": "stub_fetch"},
+            "artifacts": [],
+        },
+    )()
+    artifact = type(
+        "Artifact",
+        (),
+        {
+            "id": "art_inline",
+            "content_json": {
+                "hits": [
+                    {
+                        "provider": "firecrawl_search",
+                        "provider_type": "search_with_inline_content",
+                        "title": "Firecrawl inline result",
+                        "source_url": "https://example.com/inline",
+                        "source_domain": "example.com",
+                        "source_type": "web",
+                        "region_hint": "overseas",
+                        "publisher_type": "media",
+                        "published_at_utc": "2026-05-01",
+                        "author": "Author",
+                        "publisher": "Publisher",
+                        "language": "en",
+                        "inline_content_text": "# Firecrawl inline body",
+                        "inline_content_format": "markdown",
+                        "inline_content_provider": "firecrawl_search",
+                        "matched_provider_names": ["firecrawl_search"],
+                        "duplicate_count": 1,
+                    }
+                ]
+            },
+        },
+    )()
+    step = type("Step", (), {"input_artifact_refs": ["art_inline"], "node_key": "fetch_documents"})()
+    task.artifacts = [artifact]
+
+    result = executor.execute(task, step)
+    docs = result.content_json["documents"]
+
+    assert len(docs) == 1
+    assert docs[0]["provider"] == "firecrawl_search"
+    assert docs[0]["content_text"] == "# Firecrawl inline body"
+    assert docs[0]["metadata"]["inline_content"] is True
+    assert docs[0]["metadata"]["fetch_skipped"] is True
+    assert result.content_json["inline_document_count"] == 1
+    assert result.content_json["fetch_skipped_count"] == 1
+    assert result.content_json["raw_document_count"] == 0
+    assert result.fetch_invocations == []
 
 
 def test_merge_search_results_can_keep_only_china_sources():

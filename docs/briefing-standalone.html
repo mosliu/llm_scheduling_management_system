@@ -643,8 +643,11 @@
   </div>
 
   <script>
-    const DEFAULT_API_BASE = window.location.origin && window.location.origin !== 'null'
-      ? window.location.origin
+    const SAME_ORIGIN_PROTOCOLS = new Set(['http:', 'https:']);
+    const DEFAULT_API_BASE = SAME_ORIGIN_PROTOCOLS.has(window.location.protocol)
+      && window.location.origin
+      && window.location.origin !== 'null'
+      ? window.location.origin.replace(/\/+$/, '')
       : '';
     const STORAGE_KEYS = {
       apiBase: 'briefing.apiBase',
@@ -877,6 +880,14 @@
           this.loadProviders();
         },
         resetApiBase() {
+          if (!DEFAULT_API_BASE) {
+            this.apiBaseInput = '';
+            this.savedApiBase = '';
+            localStorage.removeItem(STORAGE_KEYS.apiBase);
+            this.infoMessage = '当前页面不是 http(s) 页面，无法恢复同源，请手动填写完整接口地址。';
+            this.errorMessage = '';
+            return;
+          }
           this.apiBaseInput = DEFAULT_API_BASE;
           const result = this.validateApiBase(this.apiBaseInput);
           if (result.ok) {

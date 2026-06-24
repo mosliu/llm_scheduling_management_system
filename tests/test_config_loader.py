@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from llm_scheduling_management_system.config_loader import load_llm_config, load_search_config, resolve_config_path
+from llm_scheduling_management_system.config_loader import (
+    load_elasticsearch_config,
+    load_llm_config,
+    load_search_config,
+    resolve_config_path,
+)
 
 
 def test_resolve_config_path_prefers_primary(tmp_path: Path):
@@ -68,3 +73,29 @@ fallback_profiles = []
 
     assert config.providers[0].provider_type == "openai"
     assert config.profiles[0].model == "gpt-4.1-mini"
+
+
+def test_load_elasticsearch_config_from_explicit_path(tmp_path: Path):
+    config_file = tmp_path / "es.toml"
+    config_file.write_text(
+        """
+base_url = "http://127.0.0.1:9200"
+simulate = true
+version = "7.10"
+index_prefix = "qb"
+default_index_sequence = 1
+default_mappings_path = "docs/es_mappings.json"
+analysis_llm_profile = "cheap_structured_cn"
+fallback_search_month_window = 4
+date_field = "release_date"
+default_search_fields = ["title^3", "content^2"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_elasticsearch_config(config_file)
+
+    assert config.base_url == "http://127.0.0.1:9200"
+    assert config.version == "7.10"
+    assert config.index_prefix == "qb"
+    assert config.fallback_search_month_window == 4

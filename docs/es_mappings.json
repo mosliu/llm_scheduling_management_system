@@ -1,0 +1,457 @@
+{
+    "dynamic": "false",
+    "properties": {
+        "keywords": {
+            "type": "keyword"
+        },
+        "open_id": {
+            "type": "keyword"
+        },
+        "repeat_count": {
+            "type": "integer"
+        },
+        "asy_value": {
+            "type": "keyword"
+        },
+        "system_sim_hash2": {
+            "type": "keyword"
+        },
+        "bak1": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "warn_reason": {
+            "type": "keyword"
+        },
+        "follownum": {
+            "type": "integer"
+        },
+        "navigation": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "read_num": {
+            "type": "integer"
+        },
+        "praise_num": {
+            "type": "integer"
+        },
+        "wtype": {
+            "type": "keyword"
+        },
+        "dq_type": {
+            "fielddata": true,
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "media_name": {
+            "type": "text",
+            "analyzer": "ik_max_word",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "dp_tag": {
+            "type": "keyword"
+        },
+        "capture_time": {
+            "format": "yyyy-MM-dd HH:mm:ss",
+            "type": "date"
+        },
+        "ocr": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "top_new": {
+            "type": "keyword"
+        },
+        "author": {
+            "analyzer": "ik_max_word",
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "user_fansnum": {
+            "type": "integer"
+        },
+        "pic_urls": {
+            "index": false,
+            "type": "text"
+        },
+        "sentiment": {
+            "type": "integer"
+        },
+        "sentiment_value": {
+            "type": "keyword"
+        },
+        "information_source_area": {
+            "analyzer": "ik_max_word",
+            "type": "text",
+            "fielddata": true
+        },
+        "user_pic": {
+            "index": false,
+            "type": "text"
+        },
+        "release_date": {
+            "format": "yyyy-MM-dd HH:mm:ss",
+            "type": "date"
+        },
+        "information_source_catalog": {
+            "type": "keyword"
+        },
+        "domain": {
+            "type": "keyword"
+        },
+        "participation_num": {
+            "type": "integer"
+        },
+        "comment_num": {
+            "type": "integer"
+        },
+        "repeat_num": {
+            "type": "integer"
+        },
+        "face_img": {
+            "type": "text",
+            "index": false
+        },
+        "is_face_img": {
+            "type": "keyword"
+        },
+        "url_mp4": {
+            "type": "text",
+            "index": false
+        },
+        "garbage_value": {
+            "type": "keyword"
+        },
+        "level_id": {
+            "type": "keyword"
+        },
+        "listurl": {
+            "type": "keyword"
+        },
+        "title": {
+            "fielddata": true,
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "content": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "data_from": {
+            "type": "keyword"
+        },
+        "isrepeat": {
+            "type": "keyword"
+        },
+        "title_crc": {
+            "type": "keyword"
+        },
+        "hy_type": {
+            "fielddata": true,
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "url_crc": {
+            "type": "keyword"
+        },
+        "information_source_level": {
+            "type": "keyword"
+        },
+        "type_id": {
+            "type": "keyword"
+        },
+        "post_place": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "listname": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "abstract": {
+            "type": "text",
+            "index": false
+        },
+        "hitwords": {
+            "type": "keyword"
+        },
+        "suggest_warn": {
+            "type": "integer"
+        },
+        "url": {
+            "type": "keyword"
+        },
+        "source_type": {
+            "type": "integer"
+        },
+        "xy_type": {
+            "type": "integer"
+        },
+        "user_paraise_num": {
+            "type": "integer"
+        },
+        "keywords_code": {
+            "type": "keyword"
+        },
+        "add_time": {
+            "format": "yyyy-MM-dd HH:mm:ss",
+            "type": "date"
+        },
+        "retweeted_url": {
+            "type": "keyword"
+        },
+        "retweeted_source": {
+            "type": "text",
+            "analyzer": "ik_max_word",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "content_media_name": {
+            "analyzer": "ik_max_word",
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "u_uid": {
+            "type": "keyword"
+        },
+        "u_nickname": {
+            "analyzer": "ik_max_word",
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "u_profile_img_url": {
+            "type": "keyword"
+        },
+        "u_gender": {
+            "type": "keyword"
+        },
+        "u_level": {
+            "type": "keyword"
+        },
+        "u_url": {
+            "type": "keyword"
+        },
+        "u_verified": {
+            "type": "keyword"
+        },
+        "u_verified_type": {
+            "type": "keyword"
+        },
+        "u_location": {
+            "type": "keyword"
+        },
+        "u_followers_count": {
+            "type": "integer"
+        },
+        "u_statuses_count": {
+            "type": "integer"
+        },
+        "u_created_at": {
+            "type": "integer"
+        },
+        "device": {
+            "type": "keyword"
+        },
+        "wx_biz": {
+            "type": "keyword"
+        },
+        "xg_data_type": {
+            "type": "keyword"
+        },
+        "is_toutiao": {
+            "type": "keyword"
+        },
+        "xg_dq_type": {
+            "fielddata": true,
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "data_type": {
+            "type": "keyword"
+        },
+        "ip_region": {
+            "type": "keyword"
+        },
+        "web_url": {
+            "type": "keyword"
+        },
+        "app_url": {
+            "type": "keyword"
+        },
+        "noise": {
+            "type": "keyword"
+        },
+        "noise2": {
+            "type": "keyword"
+        },
+        "data_from_list": {
+            "type": "keyword"
+        },
+        "data_from_list_date": {
+            "type": "keyword"
+        },
+        "is_ad_user": {
+            "type": "keyword"
+        },
+        "origin_title_crc": {
+            "type": "keyword"
+        },
+        "source_level": {
+            "type": "keyword"
+        },
+        "video_urls": {
+            "type": "keyword"
+        },
+        "speeches": {
+            "type": "keyword"
+        },
+        "speecheshash": {
+            "type": "keyword"
+        },
+        "retweeted_content": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "retweeted_title": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        },
+        "in_sd": {
+            "type": "keyword"
+        },
+        "in_sd_city": {
+            "type": "keyword"
+        },
+        "display_time": {
+            "format": "yyyy-MM-dd HH:mm:ss",
+            "type": "date"
+        },
+        "new_source_type": {
+            "type": "keyword"
+        },
+        "match_precision": {
+            "type": "keyword"
+        },
+        "match_precision_id": {
+            "type": "keyword"
+        },
+        "match_precision_ids": {
+            "type": "keyword"
+        },
+        "is_push": {
+            "type": "keyword"
+        },
+        "push_topic": {
+            "type": "keyword"
+        },
+        "dz_garbage": {
+            "type": "keyword"
+        },
+        "dz_sentiment": {
+            "type": "keyword"
+        },
+        "duration": {
+            "type": "integer"
+        },
+        "title_dq": {
+            "type": "text",
+            "analyzer": "ik_max_word",
+            "fields": {
+                "keyword": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                }
+            }
+        },
+        "ai_status": {
+            "type": "keyword"
+        },
+        "ai_city": {
+            "type": "text",
+            "analyzer": "ik_max_word"
+        },
+        "deleted": {
+            "type": "keyword"
+        },
+        "mid": {
+            "type": "keyword"
+        },
+        "retweeted_mid": {
+            "type": "keyword"
+        },
+        "media_level": {
+            "type": "keyword"
+        },
+        "media_pertain_city": {
+            "type": "keyword"
+        },
+        "media_pertain_district": {
+            "type": "keyword"
+        },
+        "media_organization": {
+            "type": "keyword"
+        },
+        "xg_job_id": {
+            "type": "keyword"
+        },
+        "xg_is_ad": {
+            "type": "keyword"
+        },
+        "asr": {
+            "type": "keyword"
+        },
+        "mcn": {
+            "type": "keyword"
+        },
+        "u_age": {
+            "type": "keyword"
+        },
+        "u_uid_org": {
+            "type": "keyword"
+        },
+        "u_favour_num": {
+            "type": "integer"
+        },
+        "u_gh_id": {
+            "type": "keyword"
+        },
+        "u_eid": {
+            "type": "keyword"
+        },
+        "pid": {
+            "type": "keyword"
+        },
+        "rootid": {
+            "type": "keyword"
+        },
+        "retweeted_ocr": {
+            "analyzer": "ik_max_word",
+            "type": "text"
+        }
+    }
+}

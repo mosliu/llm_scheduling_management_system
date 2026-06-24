@@ -4,6 +4,7 @@ HTML = r"""
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
   <title>Workflow Task Studio</title>
   <style>
     :root {
@@ -364,6 +365,7 @@ HTML = r"""
       <button class="tab-button active" onclick="setTab('overview', this)">Overview</button>
       <button class="tab-button" onclick="setTab('tasks', this)">Tasks</button>
       <button class="tab-button" onclick="setTab('detail', this)">Selected Task</button>
+      <button class="tab-button" onclick="setTab('tests', this)">Tests</button>
       <button class="tab-button" onclick="setTab('config', this)">Config</button>
     </div>
 
@@ -560,6 +562,37 @@ HTML = r"""
             <button class="secondary" onclick="resumeTaskFromSelectedCheckpoint()">Resume from Checkpoint</button>
           </div>
           <div class="message" id="continuationMessage"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-tests" class="tab-pane">
+      <div class="grid">
+        <div class="span-5 panel">
+          <h2>Search Provider Test</h2>
+          <div class="row">
+            <div>
+              <label for="searchTestProviderSelect">Provider</label>
+              <select id="searchTestProviderSelect"></select>
+            </div>
+            <div>
+              <label for="searchTestLimitInput">Limit</label>
+              <input id="searchTestLimitInput" type="number" min="1" max="20" value="3" />
+            </div>
+          </div>
+          <label for="searchTestQueryInput">Query</label>
+          <textarea id="searchTestQueryInput">OpenAI Responses API web search latest official update</textarea>
+          <div class="actions">
+            <button onclick="runSearchProviderTest()">Run Search Test</button>
+            <button class="secondary" onclick="loadProviderSelectors()">Reload Providers</button>
+          </div>
+          <div class="message" id="searchTestMessage"></div>
+        </div>
+        <div class="span-7 panel">
+          <h2>Search Test Results</h2>
+          <div class="list" id="searchTestHits"></div>
+          <h3 style="margin-top:18px;">Raw Result</h3>
+          <pre id="searchTestRaw" class="codebox"></pre>
         </div>
       </div>
     </section>
@@ -836,9 +869,11 @@ HTML = r"""
         api('/api/v1/provider-catalog/llm/profiles'),
       ]);
       const searchSelect = document.getElementById('searchProvidersSelect');
+      const searchTestSelect = document.getElementById('searchTestProviderSelect');
       const fetchSelect = document.getElementById('fetchProviderSelect');
       const llmSelect = document.getElementById('llmProfileSelect');
       searchSelect.innerHTML = '';
+      searchTestSelect.innerHTML = '';
       fetchSelect.innerHTML = '';
       llmSelect.innerHTML = '';
       for (const item of searchProviders) {
@@ -847,6 +882,12 @@ HTML = r"""
         option.textContent = `${item.name} (${item.vendor})`;
         if (item.enabled) option.selected = true;
         searchSelect.appendChild(option);
+
+        const testOption = document.createElement('option');
+        testOption.value = item.name;
+        testOption.textContent = `${item.name} (${item.vendor}${item.enabled ? '' : ', disabled'})`;
+        testOption.disabled = !item.enabled;
+        searchTestSelect.appendChild(testOption);
       }
       for (const item of fetchProviders) {
         const option = document.createElement('option');
@@ -1144,6 +1185,39 @@ HTML = r"""
       document.getElementById('continuationMessage').textContent = `Resumed ${result.task_id} from checkpoint`;
       await loadTasks();
       await selectTask(result.task_id);
+    }
+
+    async function runSearchProviderTest() {
+      const providerName = document.getElementById('searchTestProviderSelect').value;
+      const query = document.getElementById('searchTestQueryInput').value.trim();
+      const limit = parseInt(document.getElementById('searchTestLimitInput').value || '3', 10);
+      const message = document.getElementById('searchTestMessage');
+      if (!providerName || !query) {
+        message.textContent = 'Provider and query are required.';
+        return;
+      }
+      message.textContent = 'Running search test...';
+      document.getElementById('searchTestRaw').textContent = '';
+      renderList('searchTestHits', [], () => '');
+      try {
+        const payload = await api('/api/v1/provider-catalog/search/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_name: providerName, query, limit }),
+        });
+        message.textContent = payload.ok
+          ? `${payload.provider} returned ${payload.result_count} result(s).`
+          : `${payload.provider || providerName} failed: ${payload.message || 'unknown error'}`;
+        document.getElementById('searchTestRaw').textContent = pretty(payload);
+        renderList('searchTestHits', payload.hits || [], item => `
+          <strong>${escapeHtml(item.title || item.url || 'Untitled')}</strong>
+          <div class="muted">${escapeHtml(item.source_domain || 'unknown')} · ${escapeHtml(item.source_type || 'unknown')} · ${escapeHtml(item.published_at_utc || 'n/a')}</div>
+          <div class="muted">${escapeHtml(item.url || '')}</div>
+          <div class="muted">${escapeHtml((item.snippet || '').slice(0, 260))}</div>
+        `);
+      } catch (error) {
+        message.textContent = error.message;
+      }
     }
 
     async function loadConfig(kind) {

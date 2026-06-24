@@ -155,6 +155,63 @@ These are intended for:
 - evidence inspection
 - provider audit views
 
+## 3.3C Elasticsearch Query APIs
+
+The current implementation now supports a dedicated ES retrieval surface:
+
+- `GET /api/v1/es/health`
+- `GET /api/v1/es/index-name?year=2026&month=5`
+- `GET /api/v1/es/default-mappings`
+- `POST /api/v1/es/indexes/ensure`
+- `POST /api/v1/es/analyze-query`
+- `POST /api/v1/es/resolve-event`
+- `POST /api/v1/es/search`
+
+Expected behavior:
+
+- ES index naming follows `qbYYYYMM1`
+- a date range may expand to multiple monthly indexes
+- `resolve-event` accepts an event name or description and returns:
+  - normalized event name
+  - inferred start and end dates
+  - search phrases for ES
+- `analyze-query` accepts free text and returns high-signal search phrases
+- `search` supports:
+  - direct query phrases
+  - event-text-driven retrieval
+  - explicit index list
+  - inferred multi-index search across month boundaries
+
+Recommended default query DSL strategy:
+
+- text recall fields:
+  - `title^6`
+  - `bak1^5`
+  - `content^3`
+  - `navigation^2`
+  - `media_name^2`
+  - `author^2`
+  - `retweeted_source^2`
+  - `content_media_name^2`
+  - `listname^1.5`
+  - `information_source_area^1.5`
+  - `post_place^1.5`
+  - `ocr`
+- phrase boost fields:
+  - `title`
+  - `bak1`
+  - `media_name`
+  - `author`
+- default filter behavior:
+  - numeric and keyword fields use `term` / `terms`
+  - text fields with keyword subfields, such as `media_name` and `author`, use `.keyword`
+  - time range filter defaults to `release_date`
+- default sort:
+  - `_score desc`
+  - `release_date desc`
+  - `capture_time desc`
+  - `add_time desc`
+
 ## 3.4 Get Step Details
 
 `GET /api/v1/steps/{step_run_id}`

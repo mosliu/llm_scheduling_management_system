@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from llm_scheduling_management_system.config_loader import load_llm_config, load_mcp_config, load_search_config, load_source_registry_config
 from llm_scheduling_management_system.services.config_test_service import ConfigTestService
@@ -21,6 +22,14 @@ router = APIRouter(prefix="/api/v1/provider-catalog", tags=["provider-catalog"])
 test_service = ConfigTestService()
 
 
+class SearchProviderTestRequest(BaseModel):
+    """Payload for testing a single configured search provider."""
+
+    provider_name: str
+    query: str = "sanity check"
+    limit: int = Field(default=3, ge=1, le=20)
+
+
 @router.get("/search", response_model=list[ConfiguredProviderResponse])
 def list_search_providers() -> list[ConfiguredProviderResponse]:
     """获取已配置的搜索服务提供商列表。
@@ -35,6 +44,14 @@ def list_search_providers() -> list[ConfiguredProviderResponse]:
     """
     config = load_search_config()
     return [map_configured_provider(provider) for provider in config.providers]
+
+
+@router.post("/search/test")
+def test_search_provider(request: SearchProviderTestRequest) -> dict:
+    """Run a one-off search against a selected provider for console diagnostics."""
+
+    config = load_search_config()
+    return test_service.test_search_provider(config, request.provider_name, request.query, request.limit)
 
 
 @router.get("/fetch", response_model=list[ConfiguredProviderResponse])

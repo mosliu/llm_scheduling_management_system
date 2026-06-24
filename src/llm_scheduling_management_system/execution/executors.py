@@ -286,6 +286,12 @@ def _merge_hit_records(existing: dict, incoming: dict) -> dict:
     merged["publisher_type"] = primary.get("publisher_type") or secondary.get("publisher_type")
     merged["source_type"] = primary.get("source_type") or secondary.get("source_type")
     merged["provider_type"] = primary.get("provider_type") or secondary.get("provider_type")
+    merged["inline_content_text"] = _choose_longer_text(
+        primary.get("inline_content_text"),
+        secondary.get("inline_content_text"),
+    )
+    merged["inline_content_format"] = primary.get("inline_content_format") or secondary.get("inline_content_format")
+    merged["inline_content_provider"] = primary.get("inline_content_provider") or secondary.get("inline_content_provider")
 
     matched_provider_names = list(merged.get("matched_provider_names", []))
     for provider in [existing.get("provider"), incoming.get("provider")]:
@@ -479,6 +485,10 @@ class SearchFanoutExecutor(StepExecutor):
                     "matched_source_urls": [hit.url] if hit.url else [],
                     "duplicate_count": 1,
                 }
+                if metadata.get("inline_content_text"):
+                    normalized_hit["inline_content_text"] = metadata.get("inline_content_text")
+                    normalized_hit["inline_content_format"] = metadata.get("inline_content_format")
+                    normalized_hit["inline_content_provider"] = metadata.get("inline_content_provider") or hit.provider
                 dedup_key = _search_dedup_url_key(normalized_hit["source_url"])
                 if dedup_key:
                     normalized_hit["search_dedup_url_key"] = dedup_key
@@ -565,31 +575,60 @@ class FetchDocumentsExecutor(StepExecutor):
             else self.search_provider_factory.build_default_fetch_provider()
         )
         upstream = list(step.input_artifact_refs)
-        if fetch_provider is None:
-            return StepExecutionResult(
-                artifact_type="retrieval.fetched_documents",
-                artifact_level="normalized",
-                schema_name="fetched_documents_bundle",
-                content_json={
-                    "node_key": step.node_key,
-                    "task_id": task.id,
-                    "documents": [],
-                },
-                checkpoint_type="fetch_documents_completed",
-                input_artifact_ids=upstream,
-            )
-
         docs = []
         docs_by_url: dict[str, dict] = {}
         fetch_invocations = []
+        inline_document_count = 0
+        fetch_skipped_count = 0
         available_artifact = _first_upstream_artifact(task, step)
         hits = available_artifact.content_json.get("hits", []) if available_artifact else []
         source_policy = _source_policy_from_task(task)
         hits, filtered_out_hit_count = _filter_items_by_source_policy(hits, source_policy)
         for hit in hits:
             source_url = hit.get("source_url") or f"https://{hit.get('source_domain', 'example.com')}/"
-            fetched = fetch_provider.fetch(source_url)
             source_info = self.source_registry.lookup(hit.get("source_domain", ""))
+            inline_content = (hit.get("inline_content_text") or "").strip()
+            if inline_content:
+                document_record = {
+                    "provider": hit.get("inline_content_provider") or hit.get("provider"),
+                    "url": source_url,
+                    "canonical_url": source_url,
+                    "title": hit.get("title"),
+                    "author": hit.get("author"),
+                    "language": hit.get("language"),
+                    "source_domain": hit.get("source_domain"),
+                    "source_type": hit.get("source_type"),
+                    "region_hint": hit.get("region_hint") or source_info["region_hint"],
+                    "publisher_type": hit.get("publisher_type") or source_info["publisher_type"],
+                    "published_at_utc": hit.get("published_at_utc"),
+                    "content_text": inline_content,
+                    "metadata": {
+                        "source_url": source_url,
+                        "publisher": hit.get("publisher"),
+                        "matched_provider_names": list(hit.get("matched_provider_names", [hit.get("provider")])),
+                        "duplicate_count": hit.get("duplicate_count", 1),
+                        "inline_content": True,
+                        "inline_content_format": hit.get("inline_content_format"),
+                        "fetch_skipped": True,
+                    },
+                }
+                inline_document_count += 1
+                fetch_skipped_count += 1
+                dedup_key = _canonicalize_url(document_record.get("canonical_url") or document_record.get("url"))
+                if dedup_key:
+                    existing = docs_by_url.get(dedup_key)
+                    docs_by_url[dedup_key] = (
+                        _merge_document_records(existing, document_record) if existing is not None else document_record
+                    )
+                else:
+                    docs.append(document_record)
+                continue
+
+            if fetch_provider is None:
+                fetch_skipped_count += 1
+                continue
+
+            fetched = fetch_provider.fetch(source_url)
             document_record = {
                 "provider": fetched.provider,
                 "url": fetched.url,
@@ -639,6 +678,8 @@ class FetchDocumentsExecutor(StepExecutor):
                 "task_id": task.id,
                 "input_artifact_ids": upstream,
                 "raw_document_count": len(fetch_invocations),
+                "inline_document_count": inline_document_count,
+                "fetch_skipped_count": fetch_skipped_count,
                 "document_count": len(docs),
                 "filtered_out_hit_count": filtered_out_hit_count,
                 "source_filter_applied": filtered_out_hit_count > 0,

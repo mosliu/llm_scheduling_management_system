@@ -11,8 +11,10 @@ from llm_scheduling_management_system.providers.interfaces import FetchProvider,
 from llm_scheduling_management_system.providers.llms import AnthropicProvider, OpenAIProvider
 from llm_scheduling_management_system.providers.mock import MockLLMProvider
 from llm_scheduling_management_system.providers.search import (
+    BochaSearchProvider,
     ExaSearchProvider,
     FirecrawlSearchProvider,
+    GeminiSearchProvider,
     GrokSearchProvider,
     OpenAIWebSearchProvider,
     TavilySearchProvider,
@@ -68,10 +70,14 @@ class SearchProviderFactory:
             return FirecrawlSearchProvider(provider)
         if provider.vendor == "tinyfish":
             return TinyFishSearchProvider(provider)
+        if provider.vendor == "bocha":
+            return BochaSearchProvider(provider)
         if provider.vendor == "grok":
             return GrokSearchProvider(provider)
         if provider.vendor == "openai":
             return OpenAIWebSearchProvider(provider)
+        if provider.vendor == "gemini":
+            return GeminiSearchProvider(provider)
         return None
 
     def build_default_search_providers(self) -> list[SearchProvider]:

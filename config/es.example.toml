@@ -1,0 +1,31 @@
+base_url = "http://localhost:9200"
+username = ""
+password = ""
+api_key = ""
+timeout_seconds = 30
+enabled = true
+simulate = true
+verify_ssl = true
+version = "7.10"
+index_prefix = "qb"
+default_index_sequence = 1
+default_mappings_path = "docs/es_mappings.json"
+analysis_llm_profile = "cheap_structured_cn"
+fallback_search_month_window = 3
+date_field = "release_date"
+default_search_fields = [
+    "title^6",
+    "bak1^5",
+    "content^3",
+    "navigation^2",
+    "media_name^2",
+    "author^2",
+    "retweeted_source^2",
+    "content_media_name^2",
+    "listname^1.5",
+    "information_source_area^1.5",
+    "post_place^1.5",
+    "ocr",
+]
+
+[extra_headers]
